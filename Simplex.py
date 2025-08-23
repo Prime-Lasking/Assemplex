@@ -20,6 +20,12 @@ OPCODES = {
     'GT': 19,
     'LT': 20,
     'READ': 21,
+    'MOD': 22,
+    'AND': 23,
+    'OR': 24,
+    'NOT': 25,
+    'IF': 26,
+    'ELSE': 27,
 }
 
 def assemble(asm):
@@ -29,14 +35,12 @@ def assemble(asm):
     next_slot = 0
     lines = []
 
-    # First pass: strip comments and store clean instructions
     for line in asm.strip().split('\n'):
         line = line.split(';')[0].strip()
         if not line:
             continue
         lines.append(line)
 
-    # First pass: collect label positions
     i = 0
     for line in lines:
         if line.endswith(':'):
@@ -49,24 +53,20 @@ def assemble(asm):
             if arg:
                 i += 1
 
-    # Second pass: generate code
     for line in lines:
         if line.endswith(':'):
-            continue  # Skip labels
-
+            continue
         instr, *arg = line.split(maxsplit=1)
         instr = instr.upper()
         code.append(OPCODES[instr])
-
         if arg:
             val = arg[0].strip()
-
             if val.lstrip('-').isdigit():
                 code.append(int(val))
             elif val.startswith('"') and val.endswith('"'):
                 code.append(val[1:-1])
             elif val in labels:
-                code.append(labels[val])  # Replace label with address
+                code.append(labels[val])
             else:
                 if instr in {'STORE', 'LOAD', 'READ'}:
                     if val not in vars:
@@ -75,9 +75,7 @@ def assemble(asm):
                     code.append(vars[val])
                 else:
                     code.append(val)
-
     return code, next_slot
-
 
 def run_vm(code, slots):
     stack = []
@@ -88,138 +86,119 @@ def run_vm(code, slots):
         op = code[i]
         i += 1
 
-        if op == 1:  # PUSH
+        if op == 1:
             stack.append(code[i])
             i += 1
-
-        elif op == 2:  # ADD
+        elif op == 2:
             b = stack.pop()
             a = stack.pop()
-            if isinstance(a, str) or isinstance(b, str):
-                stack.append(str(a) + str(b))
-            else:
-                stack.append(a + b)
-
-        elif op == 3:  # STORE
+            stack.append(a + b)
+        elif op == 3:
             mem[code[i]] = stack.pop()
             i += 1
-
-        elif op == 4:  # LOAD
+        elif op == 4:
             stack.append(mem[code[i]])
             i += 1
-
-        elif op == 5:  # PRINT
+        elif op == 5:
             print(stack.pop())
-
-        elif op == 6:  # HALT
+        elif op == 6:
             break
-
-        elif op == 7:  # SUB
+        elif op == 7:
             b = stack.pop()
             a = stack.pop()
             stack.append(a - b)
-
-        elif op == 8:  # MUL
+        elif op == 8:
             b = stack.pop()
             a = stack.pop()
             stack.append(a * b)
-
-        elif op == 9:  # DIV
+        elif op == 9:
             b = stack.pop()
             a = stack.pop()
-            if b == 0:
-                raise ZeroDivisionError("Division by zero")
             stack.append(a / b)
-
-        elif op == 10:  # EXP
+        elif op == 10:
             b = stack.pop()
             a = stack.pop()
             stack.append(a ** b)
-
-        elif op == 11:  # SQRT
+        elif op == 11:
             a = stack.pop()
-            if a < 0:
-                raise ValueError("Cannot take square root of negative number")
             stack.append(a ** 0.5)
-
-        elif op == 12:  # JMP
+        elif op == 12:
             i = code[i]
-
-        elif op == 13:  # JZ
+        elif op == 13:
             addr = code[i]
             i += 1
             if stack.pop() == 0:
                 i = addr
-
-        elif op == 14:  # JNZ
+        elif op == 14:
             addr = code[i]
             i += 1
             if stack.pop() != 0:
                 i = addr
-
-        elif op == 15:  # TOINT
+        elif op == 15:
             val = stack.pop()
-            try:
-                stack.append(int(val))
-            except ValueError:
-                raise ValueError(f"Cannot convert {val} to int")
-
-        elif op == 16:  # TOSTR
+            stack.append(int(val))
+        elif op == 16:
             val = stack.pop()
             stack.append(str(val))
-
-        elif op == 17:  # LEN
+        elif op == 17:
             val = stack.pop()
             stack.append(len(str(val)))
-
-        elif op == 18:  # EQ
+        elif op == 18:
             b = stack.pop()
             a = stack.pop()
             stack.append(1 if a == b else 0)
-
-        elif op == 19:  # GT
+        elif op == 19:
             b = stack.pop()
             a = stack.pop()
             stack.append(1 if a > b else 0)
-
-        elif op == 20:  # LT
+        elif op == 20:
             b = stack.pop()
             a = stack.pop()
             stack.append(1 if a < b else 0)
-
-        elif op == 21:  # READ
+        elif op == 21:
             var_slot = code[i]
             i += 1
-            user_input = input("Enter value: ")
-            mem[var_slot] = user_input
+            mem[var_slot] = input("Enter value: ")
+        elif op == 22:
+            b = stack.pop()
+            a = stack.pop()
+            stack.append(a % b)
+        elif op == 23:
+            b = stack.pop()
+            a = stack.pop()
+            stack.append(1 if a and b else 0)
+        elif op == 24:
+            b = stack.pop()
+            a = stack.pop()
+            stack.append(1 if a or b else 0)
+        elif op == 25:
+            a = stack.pop()
+            stack.append(0 if a else 1)
+        elif op == 26:
+            addr = code[i]
+            i += 1
+            cond = stack.pop()
+            if not cond:
+                i = addr
+        elif op == 27:
+            addr = code[i]
+            i += 1
+            i = addr
 
 program = """
-; Countdown from input number to 0
-PUSH 100
-STORE x
-LOAD x
-TOINT
-STORE counter
-
-loop_start:
-LOAD counter
-PUSH 0
-GT          ; while counter > 0
-JZ end_loop
-
-LOAD counter
+PUSH 10
+PUSH 5
+EQ
+IF Else_Block
+PUSH "10 is equal to 5"
 PRINT
-
-LOAD counter
-PUSH 1
-SUB
-STORE counter
-
-JMP loop_start
-
-end_loop:
+JMP END
+Else_Block:
+PUSH "10 is not equal to 5"
+PRINT
+JMP END
+END:
 HALT
-
 """
 
 if __name__ == "__main__":
