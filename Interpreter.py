@@ -5,6 +5,7 @@ OPCODES = {
     'GT': 19, 'LT': 20, 'IN': 21, 'MOD': 22, 'AND': 23, 'OR': 24,
     'NOT': 25, 'IF': 26, 'ELSE': 27, 'INC': 28, 'DEC': 29,
 }
+
 def interpreter(asm_source):
     # --- Assemble ---
     code = []
@@ -26,31 +27,32 @@ def interpreter(asm_source):
         else:
             instr, *arg = line.split(maxsplit=1)
             pc += 1
-            if arg:
-                pc += 1
 
-    # Second pass: generate bytecode
+    # Second pass: generate bytecode as (opcode, arg)
     for line in lines:
         if line.endswith(':'):
             continue
         instr, *arg = line.split(maxsplit=1)
         instr = instr.upper()
-        code.append(OPCODES[instr])
+        opcode = OPCODES[instr]
         if arg:
             val = arg[0].strip()
             if val.lstrip('-').isdigit():
-                code.append(int(val))
+                arg_val = int(val)
             elif val.startswith('"') and val.endswith('"'):
-                code.append(val[1:-1])
+                arg_val = val[1:-1]
             elif val in labels:
-                code.append(labels[val])
+                arg_val = labels[val]
             elif instr in {'STORE', 'LOAD', 'IN', 'INC', 'DEC'}:
                 if val not in vars:
                     vars[val] = next_slot
                     next_slot += 1
-                code.append(vars[val])
+                arg_val = vars[val]
             else:
-                code.append(val)
+                arg_val = val
+            code.append((opcode, arg_val))
+        else:
+            code.append((opcode, None))
 
     # --- Run VM ---
     stack = []
@@ -58,36 +60,25 @@ def interpreter(asm_source):
     i = 0
 
     while i < len(code):
-        op = code[i]
+        op, arg = code[i]
         i += 1
 
         if op == 1:  # PUSH
-            value = code[i]
-            stack.append(value)
-            i += 1
+            stack.append(arg)
 
         elif op == 2:  # ADD
             b = stack.pop()
             a = stack.pop()
-            if isinstance(a, str) and isinstance(b, str):
-                stack.append(a + b)
-            else:
-                stack.append(a + b)
+            stack.append(a + b)
 
         elif op == 3:  # STORE
-            slot = code[i]
-            value = stack.pop()
-            mem[slot] = value
-            i += 1
+            mem[arg] = stack.pop()
 
         elif op == 4:  # LOAD
-            slot = code[i]
-            stack.append(mem[slot])
-            i += 1
+            stack.append(mem[arg])
 
         elif op == 5:  # PRINT
-            value = stack.pop()
-            print(value)
+            print(stack.pop())
 
         elif op == 6:  # HALT
             break
@@ -117,31 +108,24 @@ def interpreter(asm_source):
             stack.append(a ** 0.5)
 
         elif op == 12:  # JMP
-            i = code[i]
+            i = arg
 
         elif op == 13:  # JZ
-            addr = code[i]
-            i += 1
             if stack.pop() == 0:
-                i = addr
+                i = arg
 
         elif op == 14:  # JNZ
-            addr = code[i]
-            i += 1
             if stack.pop() != 0:
-                i = addr
+                i = arg
 
         elif op == 15:  # TOINT
-            val = stack.pop()
-            stack.append(int(val))
+            stack.append(int(stack.pop()))
 
         elif op == 16:  # TOSTR
-            val = stack.pop()
-            stack.append(str(val))
+            stack.append(str(stack.pop()))
 
         elif op == 17:  # LEN
-            val = stack.pop()
-            stack.append(len(str(val)))
+            stack.append(len(str(stack.pop())))
 
         elif op == 18:  # EQ
             b = stack.pop()
@@ -159,9 +143,7 @@ def interpreter(asm_source):
             stack.append(1 if a < b else 0)
 
         elif op == 21:  # IN
-            slot = code[i]
-            i += 1
-            mem[slot] = input("Enter value: ")
+            mem[arg] = input("Enter value: ")
 
         elif op == 22:  # MOD
             b = stack.pop()
@@ -183,16 +165,11 @@ def interpreter(asm_source):
             stack.append(0 if a else 1)
 
         elif op == 26:  # IF
-            addr = code[i]
-            i += 1
-            cond = stack.pop()
-            if not cond:
-                i = addr
+            if not stack.pop():
+                i = arg
 
         elif op == 27:  # ELSE
-            addr = code[i]
-            i += 1
-            i = addr
+            i = arg
 
         elif op == 28:  # INC
             a = stack.pop()
