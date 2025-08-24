@@ -1,9 +1,10 @@
+from math import *
 OPCODES = {
     'PUSH': 1, 'ADD': 2, 'STORE': 3, 'LOAD': 4, 'PRINT': 5, 'HALT': 6,
     'SUB': 7, 'MUL': 8, 'DIV': 9, 'EXP': 10, 'SQRT': 11, 'JMP': 12,
     'JZ': 13, 'JNZ': 14, 'TOINT': 15, 'TOSTR': 16, 'LEN': 17, 'EQ': 18,
     'GT': 19, 'LT': 20, 'IN': 21, 'MOD': 22, 'AND': 23, 'OR': 24,
-    'NOT': 25, 'IF': 26, 'ELSE': 27, 'INC': 28, 'DEC': 29,
+    'NOT': 25, 'IF': 26, 'FLOOR': 27, 'INC': 28, 'DEC': 29,'CEIL': 30,
 }
 
 def interpreter(asm_source):
@@ -168,8 +169,9 @@ def interpreter(asm_source):
             if not stack.pop():
                 i = arg
 
-        elif op == 27:  # ELSE
-            i = arg
+        elif op == 27:  # FLOOR
+            a = stack.pop()
+            stack.append(floor(a))
 
         elif op == 28:  # INC
             a = stack.pop()
@@ -182,3 +184,6 @@ def interpreter(asm_source):
             if isinstance(a, str):
                 raise TypeError("Cannot use DEC on string")
             stack.append(a - 1)
+        elif op == 30: # CEIL
+            a = stack.pop()
+            stack.append(ceil(a))
