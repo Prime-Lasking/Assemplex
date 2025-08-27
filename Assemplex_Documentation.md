@@ -5,7 +5,7 @@ stack-based virtual machine.\
 It is designed for learning low-level programming concepts while still
 running on Python.
 
-With Assemplex you can:\
+With Assemplex you can:
 - Write simple assembly-like programs with readable opcodes\
 - Work with arithmetic, logic, branching, and memory instructions\
 - Execute them directly on the provided Python interpreter
@@ -73,7 +73,7 @@ JNZ loop_start
 HALT
 ```
 
-------------------------------------------------------------------------
+---
 
 ## 🛠 Opcodes Reference
 
@@ -105,7 +105,7 @@ HALT
   **DUP**              Duplicate top of stack
   **IN var**           Input from user, store into variable
 
-------------------------------------------------------------------------
+---
 
 ## 📂 Example: Factorial
 
@@ -138,16 +138,7 @@ Output:
 
     120
 
-------------------------------------------------------------------------
-
-## 🛠 Future Improvements
-
--   File I/O support\
--   String concatenation helpers\
--   More math & bitwise operations\
--   Debugger / step mode
-
-------------------------------------------------------------------------
+---
 
 ## 📜 License
 
