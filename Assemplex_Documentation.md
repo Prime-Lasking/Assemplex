@@ -21,19 +21,6 @@ With Assemplex you can:\
 -   Type conversion, string operations, and math helpers\
 -   Easy to extend with new instructions
 
-------------------------------------------------------------------------
-
-## 📦 Installation
-
-Clone or download Assemplex from **your GitHub repository**.\
-Run programs with:
-
-``` bash
-python assemplex.py examples/hello.asm
-```
-
-------------------------------------------------------------------------
-
 ## 🧾 Language Basics
 
 Assemplex code is written line-by-line using **opcodes**.\
@@ -164,4 +151,4 @@ Output:
 
 ## 📜 License
 
-MIT License © 2025 Your Name
+MIT License © 2025 Prime-Lasking
