@@ -7,7 +7,7 @@ OPCODES = {
     'JZ': 13, 'JNZ': 14, 'TOINT': 15, 'TOSTR': 16, 'LEN': 17, 'EQ': 18,
     'GT': 19, 'LT': 20, 'IN': 21, 'MOD': 22, 'AND': 23, 'OR': 24,
     'NOT': 25, 'IF': 26, 'FLOOR': 27, 'INC': 28, 'DEC': 29, 'CEIL': 30,
-    'TIME': 31, 'DUP': 32
+    'TIME': 31, 'DUP': 32, 'DEBUG': 33
 }
 
 def interpreter(asm_source):
@@ -215,3 +215,9 @@ def interpreter(asm_source):
             if not stack:
                 raise IndexError("Stack underflow: cannot DUP on empty stack")
             stack.append(stack[-1])
+        elif op == 33:  # DEBUG
+            print("=== DEBUG ===")
+            print("STACK:", stack)
+            print("MEM:", mem)
+            print("=============")
+
