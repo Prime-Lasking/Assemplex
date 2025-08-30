@@ -1,0 +1,22 @@
+; Arithmetic test
+PUSH 10
+PUSH 3
+ADD
+PRINT   ; 13
+
+PUSH 10
+PUSH 3
+SUB
+PRINT   ; 7
+
+PUSH 10
+PUSH 3
+MUL
+PRINT   ; 30
+
+PUSH 10
+PUSH 3
+DIV
+PRINT   ; 3.333...
+
+HALT
