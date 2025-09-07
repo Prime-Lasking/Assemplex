@@ -25,24 +25,26 @@ OPCODES = {
     'JMP': 23, 'JZ': 24, 'JNZ': 25,
     'CALL': 26, 'RET': 27, 'CALLFN': 28,
     'TOINT': 29, 'TOSTR': 30, 'LEN': 31, 'ROUND': 32,
-    'LOADLIB': 33, 'IN': 34
+    'LOADLIB': 33, 'IN': 34, 'DEBUG': 35
 }
 
 # --------------------------
-# Parse .asp source to bytecode
+# Parse source to bytecode
 # --------------------------
-def parse(source):
+def parse(source, vars=None, next_slot=0):
     code = []
-    vars = {}
+    if vars is None:
+        vars = {}
     labels = {}
-    next_slot = 0
     lines = []
 
+    # strip comments and empty lines
     for line in source.strip().split("\n"):
         line = line.split(";")[0].strip()
         if line:
             lines.append(line)
 
+    # gather labels
     pc = 0
     for line in lines:
         if line.startswith("FUNC "):
@@ -51,20 +53,33 @@ def parse(source):
         elif not line.endswith(":"):
             pc += 1
 
+    # assemble instructions
     for line in lines:
         if line.startswith("FUNC "):
             continue
 
-        instr, *arg = line.split(maxsplit=1)
-        instr = instr.upper()
+        parts = line.split(maxsplit=1)
+        instr = parts[0].upper()
+        arg = parts[1].strip() if len(parts) > 1 else None
 
         if instr not in OPCODES:
-            raise ValueError(f"Unknown instruction: {instr}")
+            print(f"Unknown instruction: {instr}")
+            sys.exit(EXIT_RUNTIME)
 
         opcode = OPCODES[instr]
 
         if arg:
-            val = arg[0].strip()
+            val = arg
+
+            # LOADLIB arg is string filename
+            if instr == "LOADLIB":
+                if val.startswith('"') and val.endswith('"'):
+                    arg_val = val[1:-1]
+                else:
+                    arg_val = val
+                code.append((opcode, arg_val))
+                continue
+
             try:
                 arg_val = int(val)
             except ValueError:
@@ -84,59 +99,34 @@ def parse(source):
                         arg_val = vars[val]
                     else:
                         arg_val = val
-            code.append((opcode,arg_val))
+            code.append((opcode, arg_val))
         else:
-            code.append((opcode,None))
+            code.append((opcode, None))
 
-    return code, next_slot, labels
+    return code, next_slot, labels, vars
 
 # --------------------------
 # VM Interpreter
 # --------------------------
-def interpreter(file_path):
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        sys.exit(EXIT_RUNTIME)
-
-    with open(file_path, "r") as f:
-        source = f.read()
-
-    code, memsize, labels = parse(source)
+def run_vm(source):
+    code, memsize, labels, vars = parse(source)
     stack = []
     mem = [0] * memsize
     call_stack = []
     pc = 0
-    exit_code = EXIT_OK
-    loaded_libraries = set()
 
     def popn(n):
         if len(stack) < n:
+            print("Stack underflow!")
             sys.exit(EXIT_STACKERR)
         vals = [stack.pop() for _ in range(n)]
         return vals[::-1]
-
-    def load_library(lib_file):
-        if not lib_file.endswith(".asp"):
-            lib_file += ".asp"
-        if lib_file in loaded_libraries:
-            return
-        if not os.path.exists(lib_file):
-            sys.exit(EXIT_LIBERROR)
-        with open(lib_file, "r") as f:
-            lib_source = f.read()
-        lib_code, lib_memsize, lib_labels = parse(lib_source)
-        offset = len(code)
-        for name, addr in lib_labels.items():
-            labels[name] = addr + offset
-        code.extend(lib_code)
-        loaded_libraries.add(lib_file)
 
     while pc < len(code):
         op, arg = code[pc]
         pc += 1
 
         try:
-            # --- Core ---
             if op == OPCODES['PUSH']:
                 stack.append(arg)
             elif op == OPCODES['STORE']:
@@ -146,9 +136,9 @@ def interpreter(file_path):
             elif op == OPCODES['PRINT']:
                 print(stack.pop())
             elif op == OPCODES['HALT']:
-                sys.exit(exit_code)
+                sys.exit(EXIT_OK)
             elif op == OPCODES['IN']:
-                prompt = ""
+                prompt = ">> "
                 if arg is not None:
                     prompt = f"{arg}: "
                 inp = input(prompt)
@@ -160,100 +150,154 @@ def interpreter(file_path):
                     mem[arg] = val
                 else:
                     stack.append(val)
-
-            # --- Math ---
             elif op == OPCODES['ADD']:
-                a, b = popn(2); stack.append(a + b)
+                a, b = popn(2)
+                stack.append(a + b)
             elif op == OPCODES['SUB']:
-                a, b = popn(2); stack.append(a - b)
+                a, b = popn(2)
+                stack.append(a - b)
             elif op == OPCODES['MUL']:
-                a, b = popn(2); stack.append(a * b)
+                a, b = popn(2)
+                stack.append(a * b)
             elif op == OPCODES['DIV']:
                 a, b = popn(2)
-                if b == 0: sys.exit(EXIT_DIVZERO)
+                if b == 0:
+                    print("Error: Division by zero")
+                    sys.exit(EXIT_DIVZERO)
                 stack.append(a / b)
             elif op == OPCODES['MOD']:
                 a, b = popn(2)
-                if b == 0: sys.exit(EXIT_MODZERO)
+                if b == 0:
+                    print("Error: Modulo by zero")
+                    sys.exit(EXIT_MODZERO)
                 stack.append(a % b)
-
-            # --- Comparison ---
             elif op == OPCODES['EQ']:
-                a, b = popn(2); stack.append(1 if a == b else 0)
+                a, b = popn(2)
+                stack.append(1 if a == b else 0)
             elif op == OPCODES['NEQ']:
-                a, b = popn(2); stack.append(1 if a != b else 0)
+                a, b = popn(2)
+                stack.append(1 if a != b else 0)
             elif op == OPCODES['GT']:
-                a, b = popn(2); stack.append(1 if a > b else 0)
+                a, b = popn(2)
+                stack.append(1 if a > b else 0)
             elif op == OPCODES['LT']:
-                a, b = popn(2); stack.append(1 if a < b else 0)
+                a, b = popn(2)
+                stack.append(1 if a < b else 0)
             elif op == OPCODES['GE']:
-                a, b = popn(2); stack.append(1 if a >= b else 0)
+                a, b = popn(2)
+                stack.append(1 if a >= b else 0)
             elif op == OPCODES['LE']:
-                a, b = popn(2); stack.append(1 if a <= b else 0)
-
-            # --- Boolean ---
+                a, b = popn(2)
+                stack.append(1 if a <= b else 0)
             elif op == OPCODES['AND']:
-                a, b = popn(2); stack.append(1 if a and b else 0)
+                a, b = popn(2)
+                stack.append(1 if a and b else 0)
             elif op == OPCODES['OR']:
-                a, b = popn(2); stack.append(1 if a or b else 0)
+                a, b = popn(2)
+                stack.append(1 if a or b else 0)
             elif op == OPCODES['NOT']:
-                a, = popn(1); stack.append(0 if a else 1)
-
-            # --- Stack ---
+                a, = popn(1)
+                stack.append(0 if a else 1)
             elif op == OPCODES['DUP']:
                 stack.append(stack[-1])
             elif op == OPCODES['SWAP']:
-                a, b = popn(2); stack.extend([b, a])
+                a, b = popn(2)
+                stack.extend([b, a])
             elif op == OPCODES['DROP']:
                 stack.pop()
-
-            # --- Control Flow ---
             elif op == OPCODES['JMP']:
                 pc = arg
             elif op == OPCODES['JZ']:
                 a, = popn(1)
-                if a == 0: pc = arg
+                if a == 0:
+                    pc = arg
             elif op == OPCODES['JNZ']:
                 a, = popn(1)
-                if a != 0: pc = arg
+                if a != 0:
+                    pc = arg
             elif op == OPCODES['CALL']:
-                call_stack.append(pc); pc = arg
+                call_stack.append(pc)
+                if isinstance(arg, str) and arg in labels:
+                    pc = labels[arg]
+                else:
+                    pc = arg
             elif op == OPCODES['RET']:
-                if not call_stack: sys.exit(EXIT_BADRET)
+                if not call_stack:
+                    print("Bad return")
+                    sys.exit(EXIT_BADRET)
                 pc = call_stack.pop()
             elif op == OPCODES['CALLFN']:
                 func_ref = stack.pop()
                 if isinstance(func_ref, tuple) and func_ref[0] == "FUNC":
-                    call_stack.append(pc); pc = func_ref[1]
+                    call_stack.append(pc)
+                    pc = func_ref[1]
                 elif isinstance(func_ref, int):
-                    call_stack.append(pc); pc = func_ref
+                    call_stack.append(pc)
+                    pc = func_ref
                 else:
+                    print("Bad function call")
                     sys.exit(EXIT_BADFUNC)
-
-            # --- Utilities ---
             elif op == OPCODES['TOINT']:
-                a, = popn(1); stack.append(int(a))
+                a, = popn(1)
+                stack.append(int(a))
             elif op == OPCODES['TOSTR']:
-                a, = popn(1); stack.append(str(a))
+                a, = popn(1)
+                stack.append(str(a))
             elif op == OPCODES['LEN']:
-                a, = popn(1); stack.append(len(str(a)))
+                a, = popn(1)
+                stack.append(len(str(a)))
             elif op == OPCODES['ROUND']:
-                a, = popn(1); stack.append(round(a))
-
-            # --- Libraries ---
+                a, = popn(1)
+                stack.append(round(a))
             elif op == OPCODES['LOADLIB']:
-                load_library(arg)
+                # For simplicity, ignore library loading in this interactive mode
+                print(f"Loadlib '{arg}' ignored in interactive mode.")
+            elif op == OPCODES['DEBUG']:
+                print("=== DEBUG STATE ===")
+                print(f"PC: {pc}")
+                print(f"STACK: {stack}")
+                print(f"CALLSTACK: {call_stack}")
+                mem_state = {i:v for i,v in enumerate(mem) if v != 0}
+                print(f"MEM (nonzero): {mem_state}")
+                print("===================")
+            else:
+                print(f"Unknown opcode {op}")
+                sys.exit(EXIT_RUNTIME)
 
         except SystemExit:
             raise
-        except:
+        except Exception as e:
+            print(f"Runtime error: {e}")
             sys.exit(EXIT_RUNTIME)
 
 # --------------------------
-# Run VM from command line
+# Interactive REPL to input code and run
 # --------------------------
+def main():
+    print("Enter your VM code below.")
+    print("Type ':run' on a new line to finish input and run the code.")
+    print("Press Ctrl+C to quit.\n")
+
+    lines = []
+    while True:
+        try:
+            line = input('>>> ')
+        except KeyboardInterrupt:
+            print("\nExiting.")
+            sys.exit(EXIT_OK)
+        except EOFError:
+            print("\nEOF received. Exiting.")
+            sys.exit(EXIT_OK)
+
+        if line.strip() == ':run':
+            break
+
+        lines.append(line)
+
+    source = "\n".join(lines)
+    print("\n--- Running your code ---\n")
+    run_vm(source)
+    print("\n--- Done ---")
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python vm.py main.asp")
-        sys.exit(EXIT_RUNTIME)
-    interpreter(sys.argv[1])
+    main()
