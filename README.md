@@ -1,6 +1,6 @@
 # Assemplex
 
-Assemplex is a high-performance, low-level programming language and virtual machine designed for performance-critical applications. Written in Go, it provides a clean assembly-like syntax while delivering execution speeds approximately 15% faster than Python for many tasks. Assemplex is perfect for projects that need low-level control without sacrificing development speed.
+Assemplex is a high-performance, low-level programming language and virtual machine designed for performance-critical applications. Written in Go, it provides a clean assembly-like syntax while delivering execution speeds approximately 2-4x faster than Python for many tasks. Assemplex is perfect for projects that need low-level control without sacrificing development speed.
 
 ## Key Features
 
@@ -36,7 +36,7 @@ Assemplex is a high-performance, low-level programming language and virtual mach
      ```
    - **Windows**: The binary should be ready to use as `asp.exe`
 
-3. (Optional) Move the binary to a directory in your system's PATH for global access
+   3. Move the binary to a directory in your system's PATH for global access
 
 ### Option 2: Building from Source
 
@@ -50,7 +50,7 @@ Assemplex is a high-performance, low-level programming language and virtual mach
 
 3. Build the project:
    ```bash
-   go build -o asp asp.go
+   go build -o asp.exe asp.go
    ```
 
 ### Verifying Your Installation
