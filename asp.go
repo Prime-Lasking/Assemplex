@@ -144,7 +144,7 @@ func parseProgram(lines []string) ([]Instruction, map[string]int, error) {
 	instructions := []Instruction{}
 	labels := map[string]int{}
 
-	for i, line := range lines {
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "//") {
 			continue
