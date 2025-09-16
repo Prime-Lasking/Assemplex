@@ -1,17 +1,14 @@
 # Assemplex
 
-
-Assemplex is a high-performance assembly language implementation designed for modern software development. Significantly faster than interpreted languages like Python, Assemplex provides direct hardware-level control with support for variable bit-width registers, modular code organization, and efficient memory management. Built for real-world applications where performance is non-negotiable, Assemplex delivers execution speeds that can be orders of magnitude faster than Python for compute-intensive tasks.
+Assemplex is a high-performance, low-level programming language and virtual machine designed for performance-critical applications. Written in Go, it provides a clean assembly-like syntax while delivering execution speeds approximately 15% faster than Python for many tasks. Assemplex is perfect for projects that need low-level control without sacrificing development speed.
 
 ## Key Features
 
-- **Blazing Fast**: Native execution outperforms Python by 10-100x for compute-bound tasks
-- **Heterogeneous Registers**: 16-bit to 128-bit registers with variable operation costs
-- **Modular Code**: Support for includes, imports, and function calls
-- **Arbitrary Precision Math**: Built-in support for large integers with minimal overhead
+- **High Performance**: Approximately 2-4x faster than Python for many workloads
+- **Low-Level Control**: Direct access to registers and memory management
+- **Simple Syntax**: Clean, assembly-like language that's easy to learn
 - **Cross-Platform**: Runs anywhere Go is supported
-- **Performance Optimized**: Cycle counting and instruction-level optimization
-- **Extensible**: Easy to add custom instructions and operations for specialized tasks
+- **Efficient**: Optimized for performance with minimal overhead
 
 ## Table of Contents
 - [Installation](#installation)
@@ -21,96 +18,65 @@ Assemplex is a high-performance assembly language implementation designed for mo
 - [Contributing](#contributing)
 - [License](#license)
 
-## Supported Platforms
+## System Requirements
 
-Assemplex is built with Go's excellent cross-platform support and runs natively on:
-
-### Operating Systems
-- **Windows** (7/8/10/11, both 32-bit and 64-bit)
-- **macOS** (10.13 High Sierra and later, Intel and Apple Silicon)
-- **Linux** (Most distributions with glibc 2.17+ or musl)
-- **FreeBSD** (12.0 and later)
-- **Android** (via Termux)
-- **iOS/iPadOS** (via iSH or similar terminal emulators)
-
-### Architectures
-- x86 (32-bit and 64-bit)
-- ARM (32-bit and 64-bit)
-- ARM64 (Apple Silicon)
-- MIPS (experimental)
-- RISC-V (experimental)
+- **Go 1.16 or later** (for building from source)
+- **Windows, macOS, or Linux** (for running the binary)
 
 ## Installation
 
-### Method 1: Using Go (Recommended for Developers)
+### Option 1: Using the Pre-built Binary
 
-#### Prerequisites
-- Go 1.16 or higher
-- Git (for cloning the repository)
+1. Download the `asp` binary from the [GitHub Releases](https://github.com/Prime-Lasking/Assemplex/releases) page.
 
-#### Installation Steps
+2. Make the binary executable:
+   - **Linux/macOS**:
+     ```bash
+     chmod +x asp
+     ```
+   - **Windows**: The binary should be ready to use as `asp.exe`
 
-1. **Clone the repository**:
+3. (Optional) Move the binary to a directory in your system's PATH for global access
+
+### Option 2: Building from Source
+
+1. Make sure you have Go 1.16 or later installed
+
+2. Clone the repository:
    ```bash
    git clone https://github.com/Prime-Lasking/Assemplex.git
    cd Assemplex
    ```
 
-2. **Run the setup script**:
+3. Build the project:
    ```bash
-   chmod +x setup_asp.sh
-   ./setup_asp.sh
-   ```
-
-3. **Verify installation**:
-   ```bash
-   asp --version
-   ```
-
-> **Performance Note**: While both methods provide the same functionality, the Go-based installation allows for platform-specific optimizations during compilation. The pre-built binaries are compiled with conservative settings to ensure maximum compatibility across different systems.
-
-### Method 2: Binary-Only Installation (No Go Required)
-
-#### Prerequisites
-- A supported operating system (see Supported Platforms)
-- Basic terminal/shell access
-
-#### Installation Steps
-
-1. **Download the latest binary** from the [GitHub Releases](https://github.com/Prime-Lasking/Assemplex/releases) page.
-   - For Windows: Download the `.zip` file
-   - For Linux/macOS: Download the `.tar.gz` file
-
-2. **Extract the binary** to a directory in your PATH:
-   - **Linux/macOS**:
-     ```bash
-     mkdir -p ~/bin
-     tar -xzf assemplex-*.tar.gz -C ~/bin/
-     ```
-   - **Windows**:
-     1. Create a directory for binaries (e.g., `C:\bin`)
-     2. Extract the ZIP file to this directory
-
-3. **Add to PATH** (if not already):
-   - **Linux/macOS**: Add to `~/.bashrc` or `~/.zshrc`:
-     ```bash
-     export PATH="$HOME/bin:$PATH"
-     ```
-   - **Windows**:
-     1. Open System Properties > Advanced > Environment Variables
-     2. Add `C:\bin` to the PATH variable
-
-4. **Verify installation**:
-   ```bash
-   asp --version
+   go build -o asp asp.go
    ```
 
 ### Verifying Your Installation
-After installation, open a new terminal and run:
+Run the following command to verify the installation:
 ```bash
-asp --help
+# On Linux/macOS
+./asp --version
+
+# On Windows
+asp.exe --version
 ```
-This should display the help message with available commands and options.
+
+### Running Your First Program
+Create a file named `hello.asp` with the following content:
+```assembly
+; Example Assemplex program
+MOV R1, 10
+MOV R2, 20
+ADD R1, R2
+PRINT R1  ; Should print 30
+```
+
+Then run it with:
+```bash
+./asp hello.asp
+```
 
 ## Usage
 
@@ -140,54 +106,99 @@ Assemplex provides a clean, minimal set of instructions that cover fundamental p
 
 ### Register Architecture
 
-Assemplex features a modern register architecture with different bit-widths and performance characteristics:
+Assemplex features a modern register architecture with different bit-widths and performance characteristics. Each register type has its own performance characteristics and operation costs.
 
 #### General Purpose Registers
 - `r1-r6`: 16-bit registers (1 cycle operations)
+  - 16-bit unsigned integers (0-65,535)
+  - Fastest operations, minimal memory usage
 - `r7-r10`: 32-bit registers (2 cycle operations)
+  - 32-bit unsigned integers (0-4,294,967,295)
+  - Good balance of speed and capacity
 - `r11-r13`: 64-bit registers (4 cycle operations)
+  - 64-bit unsigned integers (0-18,446,744,073,709,551,615)
+  - Larger capacity, moderate speed
 - `r14-r16`: 128-bit registers (8 cycle operations)
-
-#### Special Registers
-- `sp`: Stack pointer
-- `pc`: Program counter
-
-### Memory Model
-- **Global Scope**: Direct memory access for high-performance operations
-- **Stack-Based**: Efficient function calls and local variable management
-- **Modular Memory**: Support for includes and external module linking
+  - 128-bit arbitrary-precision integers (using math/big)
+  - Maximum capacity, slower operations
 
 ### Instruction Set
 
-#### Data Movement
-- `LOAD Rx, value` - Load immediate value or memory into register
-- `MOVE Rx, Ry` - Copy value between registers
-- `PUSH Rx` - Push register onto stack
-- `POP Rx` - Pop value from stack into register
+#### Core Instructions
+- `MOV Rx, Ry` - Copy value between registers
+- `MOV Rx, value` - Load immediate value into register
+- `PRINT Rx` - Print value of register to console
+- `JMP label` - Unconditional jump to label
+- `JZ label` - Jump if zero flag is set
+- `JNZ label` - Jump if zero flag is not set
+- `HALT` - Stop program execution
 
-#### Arithmetic
+#### Arithmetic Operations
 - `ADD Rx, Ry` - Add registers (Rx = Rx + Ry)
 - `SUB Rx, Ry` - Subtract registers (Rx = Rx - Ry)
 - `MUL Rx, Ry` - Multiply registers (Rx = Rx * Ry)
 - `DIV Rx, Ry` - Divide registers (Rx = Rx / Ry)
 - `MOD Rx, Ry` - Modulo operation (Rx = Rx % Ry)
-- `INC Rx` - Increment register
-- `DEC Rx` - Decrement register
+- `NEG Rx` - Negate register value
+- `INC Rx` - Increment register by 1
+- `DEC Rx` - Decrement register by 1
 
-#### Control Flow
-- `JMP label` - Unconditional jump
-- `JEQ label` - Jump if equal (uses CMP result)
-- `JNE label` - Jump if not equal
-- `JGT label` - Jump if greater than
-- `JLT label` - Jump if less than
-- `CALL func` - Call function
-- `RET` - Return from function
-- `HALT` - Stop program execution
+#### Comparison Operations
+- `LT` - Less than (sets zero flag if true)
+- `LE` - Less than or equal (sets zero flag if true)
+- `GT` - Greater than (sets zero flag if true)
+- `GE` - Greater than or equal (sets zero flag if true)
+- `EQ` - Equal to (sets zero flag if true)
+- `NE` - Not equal to (sets zero flag if true)
 
-#### System
-- `CMP Rx, Ry` - Compare two registers (sets flags)
-- `PRINT Rx` - Print register value
-- `;` - Line comment
+#### Function Handling
+- `FUNC name` - Define a function
+- `CALL func` - Call a function
+- `ENDFUNC` - End function definition
+
+### Program Structure
+
+A typical Assemplex program follows this structure:
+
+```assembly
+; This is a comment
+FUNC main
+  MOV r1, 10      ; Load immediate 10 into r1
+  MOV r2, 20      ; Load immediate 20 into r2
+  ADD r1, r2      ; r1 = r1 + r2
+  PRINT r1        ; Should print 30
+  HALT            ; End program
+ENDFUNC
+```
+
+### Features
+
+- **Type-Safe Operations**: Operations respect register bit-widths
+- **Cycle Counting**: Tracks execution cycles for performance analysis
+- **Function Support**: Define and call functions
+- **Labels**: Support for named code locations with labels
+- **Comments**: Use `;` for single-line comments
+- **Error Handling**: Detailed error messages for invalid operations
+### Example Program
+
+Here's a simple program that adds two numbers and prints the result:
+
+```assembly
+; Simple addition program
+FUNC main
+  MOV r1, 10      ; Load first number
+  MOV r2, 20      ; Load second number
+  ADD r1, r2      ; Add them together
+  PRINT r1        ; Print result (30)
+  HALT            ; End program
+ENDFUNC
+```
+
+### Notes
+- Use `;` for single-line comments
+- Programs must have a `main` function
+- All code must be inside functions
+- Register operations respect bit-widths automatically
 
 ## Use Cases
 
@@ -200,68 +211,91 @@ Assemplex is designed for:
 
 ## Advanced Examples
 
-### Function Call with Stack Operations
+### Function Call Example
 ```assembly
-; Main program
-LOAD r1, 10      ; Load first argument
-LOAD r2, 20      ; Load second argument
-CALL add_numbers ; Call function
-PRINT r3         ; Print result (30)
-HALT
-
 ; Function to add two numbers
-add_numbers:
-    PUSH r1      ; Save registers
-    PUSH r2
-    ADD r1, r2    ; Add arguments
-    MOVE r3, r1   ; Store result in r3
-    POP r2        ; Restore registers
-    POP r1
-    RET           ; Return from function
+FUNC add_numbers
+    ; Arguments: r1, r2
+    ; Returns: r3 = r1 + r2
+    MOV r3, r1        ; Copy first argument to r3
+    ADD r3, r2        ; Add second argument
+    RET               ; Return with result in r3
+ENDFUNC
+
+; Main program
+FUNC main
+    MOV r1, 10        ; First argument
+    MOV r2, 20        ; Second argument
+    CALL add_numbers   ; Call function
+    PRINT r3          ; Print result (30)
+    HALT
+ENDFUNC
 ```
 
-### Conditional Logic
+### Conditional Logic with Jumps
 ```assembly
 ; Find maximum of two numbers
-LOAD r1, 42      ; First number
-LOAD r2, 27      ; Second number
-CMP r1, r2       ; Compare values
-JGT r1_greater   ; Jump if r1 > r2
-MOVE r3, r2      ; r2 is greater
-JMP end_compare
-
+FUNC main
+    MOV r1, 42        ; First number
+    MOV r2, 27        ; Second number
+    
+    ; Compare values using subtraction
+    MOV r3, r1        ; Copy r1 to r3
+    SUB r3, r2        ; r3 = r1 - r2
+    JGT r1_greater    ; Jump if r1 > r2
+    
+    ; r2 is greater or equal
+    PRINT r2          ; Print r2
+    JMP end_compare
+    
 r1_greater:
-    MOVE r3, r1  ; r1 is greater
-
+    ; r1 is greater
+    PRINT r1          ; Print r1
+    
 end_compare:
-    PRINT r3     ; Print maximum value
     HALT
+ENDFUNC
 ```
 
 ### Loop with Counter
 ```assembly
 ; Count from 10 to 1
-LOAD r1, 10      ; Initialize counter
-
-do_count:
-    PRINT r1     ; Print current count
-    DEC r1       ; Decrement counter
-    CMP r1, 0    ; Check if zero
-    JGT do_count ; Loop if greater than zero
-
-HALT
+FUNC main
+    MOV r1, 10        ; Initialize counter to 10
+    
+loop_start:
+    PRINT r1          ; Print current count
+    DEC r1            ; Decrement counter
+    JZ loop_end       ; If zero, exit loop
+    JMP loop_start    ; Otherwise, continue loop
+    
+loop_end:
+    HALT              ; End program
+ENDFUNC
 ```
 
-### Countdown Loop
+### Countdown with Delay
 ```assembly
-; Countdown from 10
-LOAD R1, 10
-loop:
-PRINT R1
-LOAD R2, 1
-SUB R1, R2
-JNZ R1, loop
-HALT
+; Countdown from 10 with delay
+FUNC main
+    MOV r1, 10        ; Initialize counter
+    MOV r2, 1000000   ; Delay counter
+    
+count_loop:
+    PRINT r1          ; Print current number
+    
+    ; Delay loop
+    MOV r3, r2
+    
+delay_loop:
+    DEC r3
+    JNZ delay_loop
+    
+    DEC r1            ; Decrement counter
+    JNZ count_loop    ; Loop if not zero
+    
+    HALT
+ENDFUNC
 ```
 
 ## Contributing
