@@ -8,408 +8,445 @@ import (
 	"strings"
 )
 
-// --- Version ---
-const version = "Assemplex v2.0"
+const version = "Assemplex v2.1"
 
-// --- Variable Definition ---
-type Var struct {
-	Type  string
-	Value interface{}
-}
+type VarType int
 
-var (
-	globalMemory = make(map[string]*Var)
-	scopeStack   []map[string]*Var // for function local scopes
-	labels       = map[string]int{}
-	functions    = map[string]int{}
-	cmpFlag      = false
-	pc           = 0
-	cycleCount   = 0
-	program      []string
-	callStack    []int
-	returnValue  *Var
+const (
+	INT16 VarType = iota
+	INT32
+	INT64
+	FLOAT32
+	FLOAT64
+	CHAR
 )
 
-// --- Helpers ---
-func maskInt(v int64, typ string) int64 {
-	switch typ {
+type Variable struct {
+	Type  VarType
+	Const bool
+	I16   int16
+	I32   int32
+	I64   int64
+	F32   float32
+	F64   float64
+	Char  string
+}
+
+type Instruction struct {
+	Op    string
+	A     int
+	B     int
+	Value string
+	IsVar bool
+}
+
+type State struct {
+	Variables []*Variable
+	VarIndex  map[string]int
+	Program   []Instruction
+	Labels    map[string]int
+	Funcs     map[string]int
+	CallStack []int
+	CmpFlag   bool
+}
+
+func NewState() *State {
+	return &State{
+		Variables: []*Variable{},
+		VarIndex:  make(map[string]int),
+		Program:   []Instruction{},
+		Labels:    make(map[string]int),
+		Funcs:     make(map[string]int),
+		CallStack: []int{},
+		CmpFlag:   false,
+	}
+}
+
+func addVar(st *State, name string, t VarType, isConst bool) int {
+	idx := len(st.Variables)
+	st.Variables = append(st.Variables, &Variable{Type: t, Const: isConst})
+	st.VarIndex[name] = idx
+	return idx
+}
+
+func parseVarType(s string) VarType {
+	switch strings.ToUpper(s) {
 	case "INT16":
-		return v & 0xFFFF
+		return INT16
 	case "INT32":
-		return v & 0xFFFFFFFF
-	default:
-		return v
-	}
-}
-
-func defaultValue(typ string) interface{} {
-	switch typ {
-	case "INT16", "INT32", "INT64":
-		return int64(0)
-	case "FLOAT16", "FLOAT32", "FLOAT64":
-		return float64(0)
+		return INT32
+	case "INT64":
+		return INT64
+	case "FLOAT32":
+		return FLOAT32
+	case "FLOAT64":
+		return FLOAT64
 	case "CHAR":
-		return ""
+		return CHAR
 	default:
-		return nil
+		panic("Unknown type: " + s)
 	}
 }
 
-func getMemory() map[string]*Var {
-	if len(scopeStack) == 0 {
-		return globalMemory
-	}
-	return scopeStack[len(scopeStack)-1]
-}
-
-func getVarVal(s string) interface{} {
-	mem := getMemory()
-	if v, ok := mem[s]; ok {
-		return v.Value
-	}
-	if v, ok := globalMemory[s]; ok {
-		return v.Value
-	}
-	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return n
-	}
-	if f, err := strconv.ParseFloat(s, 64); err == nil {
-		return f
-	}
-	return s
-}
-
-// --- Parser ---
-func parseProgram(lines []string) {
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, ";") {
-			continue
-		}
-		if strings.HasSuffix(line, ":") {
-			label := strings.TrimSuffix(line, ":")
-			labels[label] = len(program)
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) >= 2 && strings.ToUpper(parts[0]) == "FUNC" {
-			functions[parts[1]] = len(program)
-		}
-		program = append(program, line)
-		if strings.ToUpper(line) == "ENDFUNC" {
-			program = append(program, "RET") // implicit return
-		}
-	}
-}
-
-// --- Comparison Helper ---
-func compare(a, b interface{}) int {
-	switch va := a.(type) {
-	case int64:
-		vb := b.(int64)
-		switch {
-		case va < vb:
-			return -1
-		case va > vb:
-			return 1
-		default:
-			return 0
-		}
-	case float64:
-		vb := b.(float64)
-		switch {
-		case va < vb:
-			return -1
-		case va > vb:
-			return 1
-		default:
-			return 0
-		}
-	case string:
-		vb := b.(string)
-		if va < vb {
-			return -1
-		} else if va > vb {
-			return 1
-		}
-		return 0
-	}
-	return 0
-}
-
-// --- Execute Program ---
-func execute() {
-	for pc < len(program) {
-		line := program[pc]
-		pc++
-		parts := strings.Fields(line)
-		if len(parts) == 0 {
-			continue
-		}
-
-		op := strings.ToUpper(parts[0])
-		switch op {
-		case "VAR":
-			handleVAR(parts)
-		case "FREE":
-			handleFREE(parts)
-		case "ADD", "SUB", "MUL", "DIV":
-			handleArithmetic(parts, op)
-		case "PRINT":
-			handlePRINT(parts)
-		case "INPUT":
-			handleINPUT(parts)
-		case "LT", "LE", "GT", "GE", "EQ", "NE":
-			handleCompare(parts, op)
-		case "JMP":
-			pc = labels[parts[1]]
-		case "JZ":
-			if cmpFlag {
-				pc = labels[parts[1]]
-			}
-		case "JNZ":
-			if !cmpFlag {
-				pc = labels[parts[1]]
-			}
-		case "CALL":
-			callFunction(parts[1], parts[2:])
-		case "RET", "HALT":
-			return
-		}
-	}
-}
-
-// --- Line Handlers ---
-func handleVAR(parts []string) {
-	if len(parts) < 3 {
-		fmt.Println("Error: VAR requires type and name")
+// Runtime setVar for INPUT and initialization
+func setVar(v *Variable, val string, isVar bool, st *State) {
+	if v == nil || v.Const {
 		return
 	}
-	typ := strings.ToUpper(parts[1])
-	name := parts[2]
-	var val interface{} = defaultValue(typ)
-	if len(parts) > 3 {
-		// function call as value
-		if strings.Contains(parts[3], "(") {
-			funcName := strings.Split(parts[3], "(")[0]
-			argStr := strings.TrimRight(parts[3][len(funcName):], ")")
-			args := strings.Fields(argStr)
-			val = callFunction(funcName, args)
-		} else {
-			lit := parts[3]
-			switch typ {
-			case "INT16", "INT32", "INT64":
-				n, _ := strconv.ParseInt(lit, 10, 64)
-				val = maskInt(n, typ)
-			case "FLOAT16", "FLOAT32", "FLOAT64":
-				f, _ := strconv.ParseFloat(lit, 64)
-				val = f
-			case "CHAR":
-				val = lit
-			}
-		}
-	}
-	getMemory()[name] = &Var{Type: typ, Value: val}
-}
-
-func handleFREE(parts []string) {
-	delete(getMemory(), parts[1])
-}
-
-func handleArithmetic(parts []string, op string) {
-	mem := getMemory()
-	dst := mem[parts[1]]
-	srcVal := getVarVal(parts[2])
-	switch dst.Type {
-	case "INT16", "INT32", "INT64":
-		n := dst.Value.(int64)
-		s := srcVal.(int64)
-		switch op {
-		case "ADD":
-			dst.Value = maskInt(n+s, dst.Type)
-		case "SUB":
-			dst.Value = maskInt(n-s, dst.Type)
-		case "MUL":
-			dst.Value = maskInt(n*s, dst.Type)
-		case "DIV":
-			if s == 0 {
-				fmt.Println("Error: division by zero")
+	if isVar {
+		if idx, ok := st.VarIndex[val]; ok {
+			src := st.Variables[idx]
+			if src == nil {
 				return
 			}
-			dst.Value = maskInt(n/s, dst.Type)
+			switch v.Type {
+			case INT16:
+				v.I16 = src.I16
+			case INT32:
+				v.I32 = src.I32
+			case INT64:
+				v.I64 = src.I64
+			case FLOAT32:
+				v.F32 = src.F32
+			case FLOAT64:
+				v.F64 = src.F64
+			case CHAR:
+				v.Char = src.Char
+			}
 		}
-	case "FLOAT16", "FLOAT32", "FLOAT64":
-		n := dst.Value.(float64)
-		s := srcVal.(float64)
+		return
+	}
+	switch v.Type {
+	case INT16:
+		n, _ := strconv.ParseInt(val, 10, 16)
+		v.I16 = int16(n)
+	case INT32:
+		n, _ := strconv.ParseInt(val, 10, 32)
+		v.I32 = int32(n)
+	case INT64:
+		n, _ := strconv.ParseInt(val, 10, 64)
+		v.I64 = n
+	case FLOAT32:
+		f, _ := strconv.ParseFloat(val, 32)
+		v.F32 = float32(f)
+	case FLOAT64:
+		f, _ := strconv.ParseFloat(val, 64)
+		v.F64 = f
+	case CHAR:
+		if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+			val = val[1 : len(val)-1]
+		}
+		v.Char = val
+	}
+}
+
+func printVar(v *Variable) {
+	if v == nil {
+		return
+	}
+	switch v.Type {
+	case INT16:
+		fmt.Println(v.I16)
+	case INT32:
+		fmt.Println(v.I32)
+	case INT64:
+		fmt.Println(v.I64)
+	case FLOAT32:
+		fmt.Println(v.F32)
+	case FLOAT64:
+		fmt.Println(v.F64)
+	case CHAR:
+		fmt.Println(v.Char)
+	}
+}
+
+func arith(st *State, op string, a, b int) {
+	va := st.Variables[a]
+	vb := st.Variables[b]
+	if va == nil || vb == nil {
+		return
+	}
+	if va.Type == CHAR && vb.Type == CHAR && op == "ADD" {
+		va.Char += vb.Char
+		return
+	}
+	switch va.Type {
+	case INT16:
 		switch op {
 		case "ADD":
-			dst.Value = n + s
+			va.I16 += vb.I16
 		case "SUB":
-			dst.Value = n - s
+			va.I16 -= vb.I16
 		case "MUL":
-			dst.Value = n * s
+			va.I16 *= vb.I16
 		case "DIV":
-			dst.Value = n / s
+			if vb.I16 != 0 {
+				va.I16 /= vb.I16
+			}
+		case "LT":
+			st.CmpFlag = va.I16 < vb.I16
+		case "LE":
+			st.CmpFlag = va.I16 <= vb.I16
+		case "GT":
+			st.CmpFlag = va.I16 > vb.I16
+		case "GE":
+			st.CmpFlag = va.I16 >= vb.I16
+		case "EQ":
+			st.CmpFlag = va.I16 == vb.I16
+		case "NE":
+			st.CmpFlag = va.I16 != vb.I16
+		}
+	case INT32:
+		switch op {
+		case "ADD":
+			va.I32 += vb.I32
+		case "SUB":
+			va.I32 -= vb.I32
+		case "MUL":
+			va.I32 *= vb.I32
+		case "DIV":
+			if vb.I32 != 0 {
+				va.I32 /= vb.I32
+			}
+		case "LT":
+			st.CmpFlag = va.I32 < vb.I32
+		case "LE":
+			st.CmpFlag = va.I32 <= vb.I32
+		case "GT":
+			st.CmpFlag = va.I32 > vb.I32
+		case "GE":
+			st.CmpFlag = va.I32 >= vb.I32
+		case "EQ":
+			st.CmpFlag = va.I32 == vb.I32
+		case "NE":
+			st.CmpFlag = va.I32 != vb.I32
+		}
+	case INT64:
+		switch op {
+		case "ADD":
+			va.I64 += vb.I64
+		case "SUB":
+			va.I64 -= vb.I64
+		case "MUL":
+			va.I64 *= vb.I64
+		case "DIV":
+			if vb.I64 != 0 {
+				va.I64 /= vb.I64
+			}
+		case "LT":
+			st.CmpFlag = va.I64 < vb.I64
+		case "LE":
+			st.CmpFlag = va.I64 <= vb.I64
+		case "GT":
+			st.CmpFlag = va.I64 > vb.I64
+		case "GE":
+			st.CmpFlag = va.I64 >= vb.I64
+		case "EQ":
+			st.CmpFlag = va.I64 == vb.I64
+		case "NE":
+			st.CmpFlag = va.I64 != vb.I64
+		}
+	case FLOAT32:
+		switch op {
+		case "ADD":
+			va.F32 += vb.F32
+		case "SUB":
+			va.F32 -= vb.F32
+		case "MUL":
+			va.F32 *= vb.F32
+		case "DIV":
+			if vb.F32 != 0 {
+				va.F32 /= vb.F32
+			}
+		case "LT":
+			st.CmpFlag = va.F32 < vb.F32
+		case "LE":
+			st.CmpFlag = va.F32 <= vb.F32
+		case "GT":
+			st.CmpFlag = va.F32 > vb.F32
+		case "GE":
+			st.CmpFlag = va.F32 >= vb.F32
+		case "EQ":
+			st.CmpFlag = va.F32 == vb.F32
+		case "NE":
+			st.CmpFlag = va.F32 != vb.F32
+		}
+	case FLOAT64:
+		switch op {
+		case "ADD":
+			va.F64 += vb.F64
+		case "SUB":
+			va.F64 -= vb.F64
+		case "MUL":
+			va.F64 *= vb.F64
+		case "DIV":
+			if vb.F64 != 0 {
+				va.F64 /= vb.F64
+			}
+		case "LT":
+			st.CmpFlag = va.F64 < vb.F64
+		case "LE":
+			st.CmpFlag = va.F64 <= vb.F64
+		case "GT":
+			st.CmpFlag = va.F64 > vb.F64
+		case "GE":
+			st.CmpFlag = va.F64 >= vb.F64
+		case "EQ":
+			st.CmpFlag = va.F64 == vb.F64
+		case "NE":
+			st.CmpFlag = va.F64 != vb.F64
 		}
 	}
 }
 
-func handlePRINT(parts []string) {
-	mem := getMemory()
-	if v, ok := mem[parts[1]]; ok {
-		fmt.Println(v.Value)
-	} else if v, ok := globalMemory[parts[1]]; ok {
-		fmt.Println(v.Value)
-	} else {
-		fmt.Println(parts[1])
-	}
-}
-
-func handleINPUT(parts []string) {
+func execute(st *State) {
+	pc := 0
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("? ")
-	text, _ := reader.ReadString('\n')
-	text = strings.TrimSpace(text)
-	dst := getMemory()[parts[1]]
-	switch dst.Type {
-	case "INT16", "INT32", "INT64":
-		n, _ := strconv.ParseInt(text, 10, 64)
-		dst.Value = maskInt(n, dst.Type)
-	case "FLOAT16", "FLOAT32", "FLOAT64":
-		f, _ := strconv.ParseFloat(text, 64)
-		dst.Value = f
-	case "CHAR":
-		dst.Value = text
+	for pc < len(st.Program) {
+		inst := st.Program[pc]
+		switch inst.Op {
+		case "VAR", "CONST":
+			if inst.Value != "" {
+				setVar(st.Variables[inst.A], inst.Value, inst.IsVar, st)
+			}
+		case "FREE":
+			st.Variables[inst.A] = nil
+		case "INPUT":
+			fmt.Print("? ")
+			text, _ := reader.ReadString('\n')
+			text = strings.TrimSpace(text)
+			setVar(st.Variables[inst.A], text, false, st)
+		case "PRINT":
+			printVar(st.Variables[inst.A])
+		case "ADD", "SUB", "MUL", "DIV", "LT", "LE", "GT", "GE", "EQ", "NE":
+			arith(st, inst.Op, inst.A, inst.B)
+		case "JMP":
+			if idx, ok := st.Labels[inst.Value]; ok {
+				pc = idx
+				continue
+			}
+		case "JZ":
+			if !st.CmpFlag {
+				if idx, ok := st.Labels[inst.Value]; ok {
+					pc = idx
+					continue
+				}
+			}
+		case "JNZ":
+			if st.CmpFlag {
+				if idx, ok := st.Labels[inst.Value]; ok {
+					pc = idx
+					continue
+				}
+			}
+		case "CALL":
+			if fidx, ok := st.Funcs[inst.Value]; ok {
+				st.CallStack = append(st.CallStack, pc+1)
+				pc = fidx
+				continue
+			}
+		case "RET":
+			if len(st.CallStack) == 0 {
+				return
+			}
+			pc = st.CallStack[len(st.CallStack)-1]
+			st.CallStack = st.CallStack[:len(st.CallStack)-1]
+			continue
+		case "HALT":
+			return
+		}
+		pc++
 	}
 }
 
-func handleCompare(parts []string, op string) {
-	va := getVarVal(parts[1])
-	vb := getVarVal(parts[2])
-	switch op {
-	case "LT":
-		cmpFlag = compare(va, vb) < 0
-	case "LE":
-		cmpFlag = compare(va, vb) <= 0
-	case "GT":
-		cmpFlag = compare(va, vb) > 0
-	case "GE":
-		cmpFlag = compare(va, vb) >= 0
-	case "EQ":
-		cmpFlag = compare(va, vb) == 0
-	case "NE":
-		cmpFlag = compare(va, vb) != 0
-	}
-}
-
-// --- Function Call ---
-func callFunction(name string, args []string) interface{} {
-	fnPC, ok := functions[name]
-	if !ok {
-		fmt.Println("Error: function not found", name)
+func parseLine(st *State, line string, lineIndex int) *Instruction {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, ";") {
 		return nil
 	}
-	// push new local scope
-	localScope := make(map[string]*Var)
-	scopeStack = append(scopeStack, localScope)
-
-	// assign parameters p0, p1, ...
-	for i, arg := range args {
-		localScope[fmt.Sprintf("p%d", i)] = &Var{Type: "INT64", Value: getVarVal(arg)}
+	if strings.HasSuffix(line, ":") {
+		label := strings.TrimSuffix(line, ":")
+		st.Labels[label] = lineIndex
+		return nil
 	}
-
-	// save return PC
-	callStack = append(callStack, pc)
-	pc = fnPC
-
-	// execute until RETURN/RET
-	for pc < len(program) {
-		line := program[pc]
-		pc++
-		parts := strings.Fields(line)
-		if len(parts) == 0 {
-			continue
+	parts := strings.Fields(line)
+	op := strings.ToUpper(parts[0])
+	switch op {
+	case "FUNC":
+		if len(parts) >= 2 {
+			fname := parts[1]
+			st.Funcs[fname] = lineIndex + 1
 		}
-		op := strings.ToUpper(parts[0])
-		if op == "RETURN" {
-			returnValue = &Var{Type: "INT64", Value: getVarVal(parts[1])}
-			pc = callStack[len(callStack)-1]
-			callStack = callStack[:len(callStack)-1]
-			val := returnValue.Value
-			scopeStack = scopeStack[:len(scopeStack)-1]
-			return val
-		} else if op == "RET" {
-			pc = callStack[len(callStack)-1]
-			callStack = callStack[:len(callStack)-1]
-			scopeStack = scopeStack[:len(scopeStack)-1]
-			return nil
-		} else {
-			executeLine(parts)
+		return nil
+	case "ENDFUNC":
+		return nil
+	case "VAR", "CONST":
+		if len(parts) >= 3 {
+			t := parseVarType(parts[1])
+			isConst := (op == "CONST")
+			idx := addVar(st, parts[2], t, isConst)
+			val := ""
+			isVar := false
+			if len(parts) == 4 {
+				val = parts[3]
+				_, exists := st.VarIndex[val]
+				isVar = exists
+			}
+			return &Instruction{Op: op, A: idx, Value: val, IsVar: isVar}
 		}
+	case "FREE", "INPUT", "PRINT":
+		idx := st.VarIndex[parts[1]]
+		return &Instruction{Op: op, A: idx}
+	case "ADD", "SUB", "MUL", "DIV", "LT", "LE", "GT", "GE", "EQ", "NE":
+		return &Instruction{Op: op, A: st.VarIndex[parts[1]], B: st.VarIndex[parts[2]]}
+	case "JMP", "JZ", "JNZ", "CALL":
+		return &Instruction{Op: op, Value: parts[1]}
+	case "RET", "HALT":
+		return &Instruction{Op: op}
 	}
-	scopeStack = scopeStack[:len(scopeStack)-1]
 	return nil
 }
 
-// --- Execute Single Line Helper ---
-func executeLine(parts []string) {
-	op := strings.ToUpper(parts[0])
-	switch op {
-	case "VAR":
-		handleVAR(parts)
-	case "FREE":
-		handleFREE(parts)
-	case "ADD", "SUB", "MUL", "DIV":
-		handleArithmetic(parts, op)
-	case "PRINT":
-		handlePRINT(parts)
-	case "INPUT":
-		handleINPUT(parts)
-	case "LT", "LE", "GT", "GE", "EQ", "NE":
-		handleCompare(parts, op)
-	}
-}
-
-// --- Help ---
 func showHelp() {
 	fmt.Println(version)
-	fmt.Println("\nUsage: asp <file.asp>  (or asp --help, --version)")
-	fmt.Println("Features:")
-	fmt.Println("- VAR <TYPE> <name> [value] : declares variable (int16/32/64, float16/32/64, char)")
-	fmt.Println("- FREE <name> : deletes variable")
-	fmt.Println("- Arithmetic: ADD, SUB, MUL, DIV")
-	fmt.Println("- Comparisons: LT, LE, GT, GE, EQ, NE")
-	fmt.Println("- Branching: JMP, JZ, JNZ, HALT")
-	fmt.Println("- Functions: FUNC, ENDFUNC, CALL, RETURN")
-	fmt.Println("- Input/Output: INPUT, PRINT")
+	fmt.Println("\nUsage:")
+	fmt.Println("  asp <file.asp>       Run Assemplex program")
+	fmt.Println("  asp --version        Show version")
+	fmt.Println("  asp --help           Show this help\n")
+	fmt.Println("Variable types: INT16, INT32, INT64, FLOAT32, FLOAT64, CHAR")
+	fmt.Println("Instructions: VAR, CONST, FREE, ADD, SUB, MUL, DIV, LT, LE, GT, GE, EQ, NE, PRINT, INPUT, JMP, JZ, JNZ, CALL, RET, HALT")
+	fmt.Println("Functions: FUNC <name> ... ENDFUNC, CALL <name>, RET")
+	fmt.Println("Labels: use <label>: at start of line, JMP/JZ/JNZ <label>")
 }
 
-// --- Main ---
 func main() {
-	if len(os.Args) == 2 {
-		if os.Args[1] == "--version" {
-			fmt.Println(version)
-			return
-		}
-		if os.Args[1] == "--help" {
-			showHelp()
-			return
-		}
-	}
-
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: asp <program.asp>")
 		return
 	}
-
-	data, err := os.ReadFile(os.Args[1])
-	if err != nil {
-		fmt.Println("Error:", err)
+	switch os.Args[1] {
+	case "--help":
+		showHelp()
+		return
+	case "--version":
+		fmt.Println(version)
 		return
 	}
-	lines := strings.Split(string(data), "\n")
-	parseProgram(lines)
-	execute()
-	fmt.Printf("[Program finished in %d cycles]\n", cycleCount)
-}
 
+	filename := os.Args[1]
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return
+	}
+
+	st := NewState()
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		if inst := parseLine(st, line, i); inst != nil {
+			st.Program = append(st.Program, *inst)
+		}
+	}
+
+	execute(st)
+}
