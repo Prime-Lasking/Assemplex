@@ -3,60 +3,80 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"math/big"
 	"os"
 	"strconv"
 	"strings"
 )
 
-const version = "Assemplex v1.2"
+// --- Version ---
+const version = "Assemplex v2.0"
+
+// --- Variable Definition ---
+type Var struct {
+	Type  string
+	Value interface{}
+}
 
 var (
-	registers  = make(map[string]*big.Int)
-	regBits    = map[string]int{}
-	regCycles  = map[string]int{}
-	labels     = map[string]int{}
-	functions  = map[string]int{}
-	cmpFlag    = false
-	pc         = 0
-	cycleCount = 0
-	program    []string
-	callStack  []int
+	globalMemory = make(map[string]*Var)
+	scopeStack   []map[string]*Var // for function local scopes
+	labels       = map[string]int{}
+	functions    = map[string]int{}
+	cmpFlag      = false
+	pc           = 0
+	cycleCount   = 0
+	program      []string
+	callStack    []int
+	returnValue  *Var
 )
 
-// --- Register Initialization ---
-func initRegisters() {
-	for i := 1; i <= 6; i++ {
-		r := fmt.Sprintf("r%d", i)
-		registers[r] = big.NewInt(0)
-		regBits[r] = 16
-		regCycles[r] = 1
-	}
-	for i := 7; i <= 10; i++ {
-		r := fmt.Sprintf("r%d", i)
-		registers[r] = big.NewInt(0)
-		regBits[r] = 32
-		regCycles[r] = 2
-	}
-	for i := 11; i <= 13; i++ {
-		r := fmt.Sprintf("r%d", i)
-		registers[r] = big.NewInt(0)
-		regBits[r] = 64
-		regCycles[r] = 4
-	}
-	for i := 14; i <= 16; i++ {
-		r := fmt.Sprintf("r%d", i)
-		registers[r] = big.NewInt(0)
-		regBits[r] = 128
-		regCycles[r] = 8
+// --- Helpers ---
+func maskInt(v int64, typ string) int64 {
+	switch typ {
+	case "INT16":
+		return v & 0xFFFF
+	case "INT32":
+		return v & 0xFFFFFFFF
+	default:
+		return v
 	}
 }
 
-func maskValue(reg string) {
-	bits := regBits[reg]
-	max := new(big.Int).Lsh(big.NewInt(1), uint(bits))
-	max.Sub(max, big.NewInt(1))
-	registers[reg].And(registers[reg], max)
+func defaultValue(typ string) interface{} {
+	switch typ {
+	case "INT16", "INT32", "INT64":
+		return int64(0)
+	case "FLOAT16", "FLOAT32", "FLOAT64":
+		return float64(0)
+	case "CHAR":
+		return ""
+	default:
+		return nil
+	}
+}
+
+func getMemory() map[string]*Var {
+	if len(scopeStack) == 0 {
+		return globalMemory
+	}
+	return scopeStack[len(scopeStack)-1]
+}
+
+func getVarVal(s string) interface{} {
+	mem := getMemory()
+	if v, ok := mem[s]; ok {
+		return v.Value
+	}
+	if v, ok := globalMemory[s]; ok {
+		return v.Value
+	}
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return n
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f
+	}
+	return s
 }
 
 // --- Parser ---
@@ -72,31 +92,52 @@ func parseProgram(lines []string) {
 			continue
 		}
 		parts := strings.Fields(line)
-		if len(parts) >= 2 && parts[0] == "FUNC" {
+		if len(parts) >= 2 && strings.ToUpper(parts[0]) == "FUNC" {
 			functions[parts[1]] = len(program)
 		}
 		program = append(program, line)
-		if line == "ENDFUNC" {
+		if strings.ToUpper(line) == "ENDFUNC" {
 			program = append(program, "RET") // implicit return
 		}
 	}
 }
 
-func getVal(s string) *big.Int {
-	if v, ok := registers[s]; ok {
-		return new(big.Int).Set(v)
+// --- Comparison Helper ---
+func compare(a, b interface{}) int {
+	switch va := a.(type) {
+	case int64:
+		vb := b.(int64)
+		switch {
+		case va < vb:
+			return -1
+		case va > vb:
+			return 1
+		default:
+			return 0
+		}
+	case float64:
+		vb := b.(float64)
+		switch {
+		case va < vb:
+			return -1
+		case va > vb:
+			return 1
+		default:
+			return 0
+		}
+	case string:
+		vb := b.(string)
+		if va < vb {
+			return -1
+		} else if va > vb {
+			return 1
+		}
+		return 0
 	}
-	n, _ := strconv.ParseInt(s, 10, 64)
-	return big.NewInt(n)
+	return 0
 }
 
-func setReg(r string, v *big.Int) {
-	registers[r].Set(v)
-	maskValue(r)
-	cycleCount += regCycles[r]
-}
-
-// --- Executor ---
+// --- Execute Program ---
 func execute() {
 	for pc < len(program) {
 		line := program[pc]
@@ -108,65 +149,18 @@ func execute() {
 
 		op := strings.ToUpper(parts[0])
 		switch op {
-		case "MOV":
-			setReg(parts[1], getVal(parts[2]))
-		case "ADD":
-			registers[parts[1]].Add(registers[parts[1]], getVal(parts[2]))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "SUB":
-			registers[parts[1]].Sub(registers[parts[1]], getVal(parts[2]))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "MUL":
-			registers[parts[1]].Mul(registers[parts[1]], getVal(parts[2]))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "DIV":
-			registers[parts[1]].Div(registers[parts[1]], getVal(parts[2]))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "MOD":
-			registers[parts[1]].Mod(registers[parts[1]], getVal(parts[2]))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "NEG":
-			registers[parts[1]].Neg(registers[parts[1]])
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "INC":
-			registers[parts[1]].Add(registers[parts[1]], big.NewInt(1))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
-		case "DEC":
-			registers[parts[1]].Sub(registers[parts[1]], big.NewInt(1))
-			maskValue(parts[1])
-			cycleCount += regCycles[parts[1]]
+		case "VAR":
+			handleVAR(parts)
+		case "FREE":
+			handleFREE(parts)
+		case "ADD", "SUB", "MUL", "DIV":
+			handleArithmetic(parts, op)
 		case "PRINT":
-			fmt.Println(registers[parts[1]])
+			handlePRINT(parts)
 		case "INPUT":
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("? ")
-			text, _ := reader.ReadString('\n')
-			text = strings.TrimSpace(text)
-			n, _ := strconv.ParseInt(text, 10, 64)
-			setReg(parts[1], big.NewInt(n))
+			handleINPUT(parts)
 		case "LT", "LE", "GT", "GE", "EQ", "NE":
-			va, vb := getVal(parts[1]), getVal(parts[2])
-			switch op {
-			case "LT":
-				cmpFlag = va.Cmp(vb) < 0
-			case "LE":
-				cmpFlag = va.Cmp(vb) <= 0
-			case "GT":
-				cmpFlag = va.Cmp(vb) > 0
-			case "GE":
-				cmpFlag = va.Cmp(vb) >= 0
-			case "EQ":
-				cmpFlag = va.Cmp(vb) == 0
-			case "NE":
-				cmpFlag = va.Cmp(vb) != 0
-			}
+			handleCompare(parts, op)
 		case "JMP":
 			pc = labels[parts[1]]
 		case "JZ":
@@ -178,58 +172,216 @@ func execute() {
 				pc = labels[parts[1]]
 			}
 		case "CALL":
-			callStack = append(callStack, pc)
-			pc = functions[parts[1]]
-		case "RET":
-			if len(callStack) == 0 {
-				return
-			}
-			pc = callStack[len(callStack)-1]
-			callStack = callStack[:len(callStack)-1]
-		case "HALT":
+			callFunction(parts[1], parts[2:])
+		case "RET", "HALT":
 			return
 		}
 	}
 }
 
-// --- Help Screen ---
+// --- Line Handlers ---
+func handleVAR(parts []string) {
+	if len(parts) < 3 {
+		fmt.Println("Error: VAR requires type and name")
+		return
+	}
+	typ := strings.ToUpper(parts[1])
+	name := parts[2]
+	var val interface{} = defaultValue(typ)
+	if len(parts) > 3 {
+		// function call as value
+		if strings.Contains(parts[3], "(") {
+			funcName := strings.Split(parts[3], "(")[0]
+			argStr := strings.TrimRight(parts[3][len(funcName):], ")")
+			args := strings.Fields(argStr)
+			val = callFunction(funcName, args)
+		} else {
+			lit := parts[3]
+			switch typ {
+			case "INT16", "INT32", "INT64":
+				n, _ := strconv.ParseInt(lit, 10, 64)
+				val = maskInt(n, typ)
+			case "FLOAT16", "FLOAT32", "FLOAT64":
+				f, _ := strconv.ParseFloat(lit, 64)
+				val = f
+			case "CHAR":
+				val = lit
+			}
+		}
+	}
+	getMemory()[name] = &Var{Type: typ, Value: val}
+}
+
+func handleFREE(parts []string) {
+	delete(getMemory(), parts[1])
+}
+
+func handleArithmetic(parts []string, op string) {
+	mem := getMemory()
+	dst := mem[parts[1]]
+	srcVal := getVarVal(parts[2])
+	switch dst.Type {
+	case "INT16", "INT32", "INT64":
+		n := dst.Value.(int64)
+		s := srcVal.(int64)
+		switch op {
+		case "ADD":
+			dst.Value = maskInt(n+s, dst.Type)
+		case "SUB":
+			dst.Value = maskInt(n-s, dst.Type)
+		case "MUL":
+			dst.Value = maskInt(n*s, dst.Type)
+		case "DIV":
+			if s == 0 {
+				fmt.Println("Error: division by zero")
+				return
+			}
+			dst.Value = maskInt(n/s, dst.Type)
+		}
+	case "FLOAT16", "FLOAT32", "FLOAT64":
+		n := dst.Value.(float64)
+		s := srcVal.(float64)
+		switch op {
+		case "ADD":
+			dst.Value = n + s
+		case "SUB":
+			dst.Value = n - s
+		case "MUL":
+			dst.Value = n * s
+		case "DIV":
+			dst.Value = n / s
+		}
+	}
+}
+
+func handlePRINT(parts []string) {
+	mem := getMemory()
+	if v, ok := mem[parts[1]]; ok {
+		fmt.Println(v.Value)
+	} else if v, ok := globalMemory[parts[1]]; ok {
+		fmt.Println(v.Value)
+	} else {
+		fmt.Println(parts[1])
+	}
+}
+
+func handleINPUT(parts []string) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("? ")
+	text, _ := reader.ReadString('\n')
+	text = strings.TrimSpace(text)
+	dst := getMemory()[parts[1]]
+	switch dst.Type {
+	case "INT16", "INT32", "INT64":
+		n, _ := strconv.ParseInt(text, 10, 64)
+		dst.Value = maskInt(n, dst.Type)
+	case "FLOAT16", "FLOAT32", "FLOAT64":
+		f, _ := strconv.ParseFloat(text, 64)
+		dst.Value = f
+	case "CHAR":
+		dst.Value = text
+	}
+}
+
+func handleCompare(parts []string, op string) {
+	va := getVarVal(parts[1])
+	vb := getVarVal(parts[2])
+	switch op {
+	case "LT":
+		cmpFlag = compare(va, vb) < 0
+	case "LE":
+		cmpFlag = compare(va, vb) <= 0
+	case "GT":
+		cmpFlag = compare(va, vb) > 0
+	case "GE":
+		cmpFlag = compare(va, vb) >= 0
+	case "EQ":
+		cmpFlag = compare(va, vb) == 0
+	case "NE":
+		cmpFlag = compare(va, vb) != 0
+	}
+}
+
+// --- Function Call ---
+func callFunction(name string, args []string) interface{} {
+	fnPC, ok := functions[name]
+	if !ok {
+		fmt.Println("Error: function not found", name)
+		return nil
+	}
+	// push new local scope
+	localScope := make(map[string]*Var)
+	scopeStack = append(scopeStack, localScope)
+
+	// assign parameters p0, p1, ...
+	for i, arg := range args {
+		localScope[fmt.Sprintf("p%d", i)] = &Var{Type: "INT64", Value: getVarVal(arg)}
+	}
+
+	// save return PC
+	callStack = append(callStack, pc)
+	pc = fnPC
+
+	// execute until RETURN/RET
+	for pc < len(program) {
+		line := program[pc]
+		pc++
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			continue
+		}
+		op := strings.ToUpper(parts[0])
+		if op == "RETURN" {
+			returnValue = &Var{Type: "INT64", Value: getVarVal(parts[1])}
+			pc = callStack[len(callStack)-1]
+			callStack = callStack[:len(callStack)-1]
+			val := returnValue.Value
+			scopeStack = scopeStack[:len(scopeStack)-1]
+			return val
+		} else if op == "RET" {
+			pc = callStack[len(callStack)-1]
+			callStack = callStack[:len(callStack)-1]
+			scopeStack = scopeStack[:len(scopeStack)-1]
+			return nil
+		} else {
+			executeLine(parts)
+		}
+	}
+	scopeStack = scopeStack[:len(scopeStack)-1]
+	return nil
+}
+
+// --- Execute Single Line Helper ---
+func executeLine(parts []string) {
+	op := strings.ToUpper(parts[0])
+	switch op {
+	case "VAR":
+		handleVAR(parts)
+	case "FREE":
+		handleFREE(parts)
+	case "ADD", "SUB", "MUL", "DIV":
+		handleArithmetic(parts, op)
+	case "PRINT":
+		handlePRINT(parts)
+	case "INPUT":
+		handleINPUT(parts)
+	case "LT", "LE", "GT", "GE", "EQ", "NE":
+		handleCompare(parts, op)
+	}
+}
+
+// --- Help ---
 func showHelp() {
 	fmt.Println(version)
-	fmt.Println("\nUsage:")
-	fmt.Println("  asp <file.asp>       Run program")
-	fmt.Println("  asp --version        Show version")
-	fmt.Println("  asp --help           Show this help\n")
-
-	fmt.Println("Registers:")
-	fmt.Println("  r1–r6   = 16-bit (fastest)")
-	fmt.Println("  r7–r10  = 32-bit")
-	fmt.Println("  r11–r13 = 64-bit")
-	fmt.Println("  r14–r16 = 128-bit (slowest)\n")
-
-	fmt.Println("Instructions:")
-	fmt.Println("  MOV rX val       Move value into register")
-	fmt.Println("  ADD rX val       Add")
-	fmt.Println("  SUB rX val       Subtract")
-	fmt.Println("  MUL rX val       Multiply")
-	fmt.Println("  DIV rX val       Divide")
-	fmt.Println("  MOD rX val       Modulo")
-	fmt.Println("  NEG rX           Negate")
-	fmt.Println("  INC rX           Increment")
-	fmt.Println("  DEC rX           Decrement")
-	fmt.Println("  PRINT rX         Print register")
-	fmt.Println("  INPUT rX         Input integer into register")
-	fmt.Println("  LT/LE/GT/GE/EQ/NE rX val   Compare (sets flag)")
-	fmt.Println("  JMP label        Jump to label")
-	fmt.Println("  JZ label         Jump if last compare was true")
-	fmt.Println("  JNZ label        Jump if last compare was false")
-	fmt.Println("  CALL func        Call function")
-	fmt.Println("  RET              Return from function")
-	fmt.Println("  FUNC name        Function start")
-	fmt.Println("  ENDFUNC          Function end")
-	fmt.Println("  HALT             Stop program\n")
-
-	fmt.Println("Labels:   <name>:")
-	fmt.Println("Comments: ; text after semicolon")
+	fmt.Println("\nUsage: asp <file.asp>  (or asp --help, --version)")
+	fmt.Println("Features:")
+	fmt.Println("- VAR <TYPE> <name> [value] : declares variable (int16/32/64, float16/32/64, char)")
+	fmt.Println("- FREE <name> : deletes variable")
+	fmt.Println("- Arithmetic: ADD, SUB, MUL, DIV")
+	fmt.Println("- Comparisons: LT, LE, GT, GE, EQ, NE")
+	fmt.Println("- Branching: JMP, JZ, JNZ, HALT")
+	fmt.Println("- Functions: FUNC, ENDFUNC, CALL, RETURN")
+	fmt.Println("- Input/Output: INPUT, PRINT")
 }
 
 // --- Main ---
@@ -246,11 +398,9 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: asp <program.asp>   (or asp --help)")
+		fmt.Println("Usage: asp <program.asp>")
 		return
 	}
-
-	initRegisters()
 
 	data, err := os.ReadFile(os.Args[1])
 	if err != nil {
@@ -262,3 +412,4 @@ func main() {
 	execute()
 	fmt.Printf("[Program finished in %d cycles]\n", cycleCount)
 }
+
