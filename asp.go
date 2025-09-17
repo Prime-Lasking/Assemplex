@@ -15,59 +15,48 @@ var (
 	registers  = make(map[string]*big.Int)
 	regBits    = map[string]int{}
 	regCycles  = map[string]int{}
-	regMask    = map[string]*big.Int{}
-	labels     = make(map[string]int)
-	functions  = make(map[string]int)
+	labels     = map[string]int{}
+	functions  = map[string]int{}
 	cmpFlag    = false
 	pc         = 0
 	cycleCount = 0
-	program    []Instruction
+	program    []string
 	callStack  []int
 )
 
-type Instruction struct {
-	op   string
-	args []string
-}
-
 // --- Register Initialization ---
 func initRegisters() {
-	// 16-bit
 	for i := 1; i <= 6; i++ {
 		r := fmt.Sprintf("r%d", i)
 		registers[r] = big.NewInt(0)
 		regBits[r] = 16
 		regCycles[r] = 1
-		regMask[r] = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 16), big.NewInt(1))
 	}
-	// 32-bit
 	for i := 7; i <= 10; i++ {
 		r := fmt.Sprintf("r%d", i)
 		registers[r] = big.NewInt(0)
 		regBits[r] = 32
 		regCycles[r] = 2
-		regMask[r] = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 32), big.NewInt(1))
 	}
-	// 64-bit
 	for i := 11; i <= 13; i++ {
 		r := fmt.Sprintf("r%d", i)
 		registers[r] = big.NewInt(0)
 		regBits[r] = 64
 		regCycles[r] = 4
-		regMask[r] = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
 	}
-	// 128-bit
 	for i := 14; i <= 16; i++ {
 		r := fmt.Sprintf("r%d", i)
 		registers[r] = big.NewInt(0)
 		regBits[r] = 128
 		regCycles[r] = 8
-		regMask[r] = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
 	}
 }
 
 func maskValue(reg string) {
-	registers[reg].And(registers[reg], regMask[reg])
+	bits := regBits[reg]
+	max := new(big.Int).Lsh(big.NewInt(1), uint(bits))
+	max.Sub(max, big.NewInt(1))
+	registers[reg].And(registers[reg], max)
 }
 
 // --- Parser ---
@@ -86,23 +75,18 @@ func parseProgram(lines []string) {
 		if len(parts) >= 2 && parts[0] == "FUNC" {
 			functions[parts[1]] = len(program)
 		}
-		program = append(program, Instruction{op: parts[0], args: parts[1:]})
-		if parts[0] == "ENDFUNC" {
-			program = append(program, Instruction{op: "RET"})
+		program = append(program, line)
+		if line == "ENDFUNC" {
+			program = append(program, "RET") // implicit return
 		}
 	}
 }
 
-// --- Value Helpers ---
 func getVal(s string) *big.Int {
 	if v, ok := registers[s]; ok {
-		return v
+		return new(big.Int).Set(v)
 	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		fmt.Printf("Invalid literal: %s\n", s)
-		os.Exit(1)
-	}
+	n, _ := strconv.ParseInt(s, 10, 64)
 	return big.NewInt(n)
 }
 
@@ -115,69 +99,61 @@ func setReg(r string, v *big.Int) {
 // --- Executor ---
 func execute() {
 	for pc < len(program) {
-		ins := program[pc]
+		line := program[pc]
 		pc++
-		args := ins.args
-		switch strings.ToUpper(ins.op) {
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			continue
+		}
+
+		op := strings.ToUpper(parts[0])
+		switch op {
 		case "MOV":
-			setReg(args[0], getVal(args[1]))
+			setReg(parts[1], getVal(parts[2]))
 		case "ADD":
-			registers[args[0]].Add(registers[args[0]], getVal(args[1]))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Add(registers[parts[1]], getVal(parts[2]))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "SUB":
-			registers[args[0]].Sub(registers[args[0]], getVal(args[1]))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Sub(registers[parts[1]], getVal(parts[2]))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "MUL":
-			registers[args[0]].Mul(registers[args[0]], getVal(args[1]))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Mul(registers[parts[1]], getVal(parts[2]))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "DIV":
-			if getVal(args[1]).Sign() == 0 {
-				fmt.Println("Runtime error: divide by zero")
-				return
-			}
-			registers[args[0]].Div(registers[args[0]], getVal(args[1]))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Div(registers[parts[1]], getVal(parts[2]))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "MOD":
-			if getVal(args[1]).Sign() == 0 {
-				fmt.Println("Runtime error: modulo by zero")
-				return
-			}
-			registers[args[0]].Mod(registers[args[0]], getVal(args[1]))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Mod(registers[parts[1]], getVal(parts[2]))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "NEG":
-			registers[args[0]].Neg(registers[args[0]])
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Neg(registers[parts[1]])
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "INC":
-			registers[args[0]].Add(registers[args[0]], big.NewInt(1))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Add(registers[parts[1]], big.NewInt(1))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "DEC":
-			registers[args[0]].Sub(registers[args[0]], big.NewInt(1))
-			maskValue(args[0])
-			cycleCount += regCycles[args[0]]
+			registers[parts[1]].Sub(registers[parts[1]], big.NewInt(1))
+			maskValue(parts[1])
+			cycleCount += regCycles[parts[1]]
 		case "PRINT":
-			fmt.Println(registers[args[0]])
+			fmt.Println(registers[parts[1]])
 		case "INPUT":
 			reader := bufio.NewReader(os.Stdin)
 			fmt.Print("? ")
 			text, _ := reader.ReadString('\n')
 			text = strings.TrimSpace(text)
-			n, err := strconv.ParseInt(text, 10, 64)
-			if err != nil {
-				fmt.Println("Invalid input, expected integer")
-				pc--
-				continue
-			}
-			setReg(args[0], big.NewInt(n))
+			n, _ := strconv.ParseInt(text, 10, 64)
+			setReg(parts[1], big.NewInt(n))
 		case "LT", "LE", "GT", "GE", "EQ", "NE":
-			va, vb := getVal(args[0]), getVal(args[1])
-			switch strings.ToUpper(ins.op) {
+			va, vb := getVal(parts[1]), getVal(parts[2])
+			switch op {
 			case "LT":
 				cmpFlag = va.Cmp(vb) < 0
 			case "LE":
@@ -192,18 +168,18 @@ func execute() {
 				cmpFlag = va.Cmp(vb) != 0
 			}
 		case "JMP":
-			pc = labels[args[0]]
+			pc = labels[parts[1]]
 		case "JZ":
 			if cmpFlag {
-				pc = labels[args[0]]
+				pc = labels[parts[1]]
 			}
 		case "JNZ":
 			if !cmpFlag {
-				pc = labels[args[0]]
+				pc = labels[parts[1]]
 			}
 		case "CALL":
 			callStack = append(callStack, pc)
-			pc = functions[args[0]]
+			pc = functions[parts[1]]
 		case "RET":
 			if len(callStack) == 0 {
 				return
@@ -211,9 +187,6 @@ func execute() {
 			pc = callStack[len(callStack)-1]
 			callStack = callStack[:len(callStack)-1]
 		case "HALT":
-			return
-		default:
-			fmt.Printf("Unknown instruction at line %d: %s\n", pc, ins.op)
 			return
 		}
 	}
@@ -238,26 +211,21 @@ func showHelp() {
 	fmt.Println("  ADD rX val       Add")
 	fmt.Println("  SUB rX val       Subtract")
 	fmt.Println("  MUL rX val       Multiply")
-	fmt.Println("  DIV rX val       Divide (runtime error if val=0)")
-	fmt.Println("  MOD rX val       Modulo (runtime error if val=0)")
-	fmt.Println("  NEG rX           Negate register")
-	fmt.Println("  INC rX           Increment register by 1")
-	fmt.Println("  DEC rX           Decrement register by 1")
-	fmt.Println("  PRINT rX         Print register value")
+	fmt.Println("  DIV rX val       Divide")
+	fmt.Println("  MOD rX val       Modulo")
+	fmt.Println("  NEG rX           Negate")
+	fmt.Println("  INC rX           Increment")
+	fmt.Println("  DEC rX           Decrement")
+	fmt.Println("  PRINT rX         Print register")
 	fmt.Println("  INPUT rX         Input integer into register")
-	fmt.Println("  LT rX val        Set flag if rX < val")
-	fmt.Println("  LE rX val        Set flag if rX <= val")
-	fmt.Println("  GT rX val        Set flag if rX > val")
-	fmt.Println("  GE rX val        Set flag if rX >= val")
-	fmt.Println("  EQ rX val        Set flag if rX == val")
-	fmt.Println("  NE rX val        Set flag if rX != val")
-	fmt.Println("  JMP label        Jump unconditionally")
-	fmt.Println("  JZ label         Jump if last comparison was true")
-	fmt.Println("  JNZ label        Jump if last comparison was false")
+	fmt.Println("  LT/LE/GT/GE/EQ/NE rX val   Compare (sets flag)")
+	fmt.Println("  JMP label        Jump to label")
+	fmt.Println("  JZ label         Jump if last compare was true")
+	fmt.Println("  JNZ label        Jump if last compare was false")
 	fmt.Println("  CALL func        Call function")
 	fmt.Println("  RET              Return from function")
 	fmt.Println("  FUNC name        Function start")
-	fmt.Println("  ENDFUNC          Function end (implicit RET added)")
+	fmt.Println("  ENDFUNC          Function end")
 	fmt.Println("  HALT             Stop program\n")
 
 	fmt.Println("Labels:   <name>:")
@@ -267,11 +235,11 @@ func showHelp() {
 // --- Main ---
 func main() {
 	if len(os.Args) == 2 {
-		switch os.Args[1] {
-		case "--version":
+		if os.Args[1] == "--version" {
 			fmt.Println(version)
 			return
-		case "--help":
+		}
+		if os.Args[1] == "--help" {
 			showHelp()
 			return
 		}
