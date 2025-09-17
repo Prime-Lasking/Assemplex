@@ -4,63 +4,162 @@ Assemplex is a high-performance, low-level programming language and virtual mach
 
 ## Key Features
 
-- **High Performance**: Approximately 2-4x faster than Python for many workloads
-- **Low-Level Control**: Direct access to registers and memory management
-- **Simple Syntax**: Clean, assembly-like language that's easy to learn
-- **Cross-Platform**: Runs anywhere Go is supported
-- **Efficient**: Optimized for performance with minimal overhead
-
-## Table of Contents
-- [Installation](#installation)
-- [Usage](#usage)
-- [Language Reference](#language-reference)
-- [Examples](#examples)
-- [Contributing](#contributing)
-- [License](#license)
-
-## System Requirements
-
-- **Go 1.16 or later** (for building from source)
-- **Windows, macOS, or Linux** (for running the binary)
+- **High Performance**: Optimized execution with near-native speeds
+- **Low-Level Control**: Direct memory management and type system
+- **Type System**: Support for various numeric types (INT16/32/64, FLOAT16/32/64) and CHAR
+- **Efficient Execution**: Optimized bytecode interpreter for fast performance
+- **Function Support**: Define and call functions with parameters
+- **Memory Management**: Manual memory management for optimal control
 
 ## Installation
 
-### Option 1: Using the Pre-built Binary
-
-1. Download the `asp` binary from the [GitHub Releases](https://github.com/Prime-Lasking/Assemplex/releases) page.
-
-2. Make the binary executable:
-   - **Linux/macOS**:
-     ```bash
-     chmod +x asp
-     ```
-   - **Windows**: The binary should be ready to use as `asp.exe`
-
-   3. Move the binary to a directory in your system's PATH for global access
-
-### Option 2: Building from Source
-
 1. Make sure you have Go 1.16 or later installed
 
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/Prime-Lasking/Assemplex.git
-   cd Assemplex
-   ```
-
-3. Build the project:
+2. Build the project:
    ```bash
    go build -o asp.exe asp.go
    ```
 
-### Verifying Your Installation
-Run the following command to verify the installation:
-```bash
-# On Linux/macOS
-./asp --version
+3.  Add the directory containing `asp.exe` to your system's PATH
 
-# On Windows
-asp.exe --version
+## Quick Start
+
+Create a file named `hello.asp` with the following content:
+
+```assembly
+; Simple Hello World program
+VAR INT32 counter 0
+
+; Main program
+PRINT "Hello, World!"
+
+; Count to 5
+VAR INT32 i 1
+LABEL loop
+PRINT i
+ADD i, 1
+LT i, 6
+JNZ loop
+
+HALT
+```
+
+Run it with:
+```bash
+asp hello.asp
+```
+
+## Language Reference
+
+### Variables
+
+Variables in Assemplex are statically typed and must be declared before use. Each variable has a specific type that determines the size and kind of data it can hold.
+
+```assembly
+; Basic variable declaration
+VAR INT32 count          ; Declare an integer variable with default value 0
+VAR FLOAT64 pi 3.14159   ; Declare and initialize a floating-point number
+VAR CHAR initial 'A'     ; Declare and initialize a character
+
+; Multiple variables of the same type
+VAR INT32 x 10, y 20, z 30
+
+; Freeing variables when done
+FREE count               ; Free the variable when no longer needed
+
+; Using variables in expressions
+VAR INT32 a 5
+VAR INT32 b 10
+ADD a, b                ; a = a + b
+PRINT a                 ; Prints 15
+```
+
+### Data Types
+- `INT16`, `INT32`, `INT64`: Signed integers
+- `FLOAT16`, `FLOAT32`, `FLOAT64`: Floating-point numbers
+- `CHAR`: Single character
+
+### Arithmetic Operations
+```assembly
+ADD <dest>, <src>  ; dest = dest + src
+SUB <dest>, <src>  ; dest = dest - src
+MUL <dest>, <src>  ; dest = dest * src
+DIV <dest>, <src>  ; dest = dest / src
+```
+
+### Control Flow
+```assembly
+JMP <label>     ; Unconditional jump to label
+JZ <label>      ; Jump if last comparison was equal
+JNZ <label>     ; Jump if last comparison was not equal
+HALT            ; Stop program execution
+```
+
+### Comparison Operators
+```assembly
+LT <a>, <b>     ; Set flag if a < b
+LE <a>, <b>     ; Set flag if a <= b
+GT <a>, <b>     ; Set flag if a > b
+GE <a>, <b>     ; Set flag if a >= b
+EQ <a>, <b>     ; Set flag if a == b
+NE <a>, <b>     ; Set flag if a != b
+```
+
+### Functions
+```assembly
+FUNC <name>     ; Start function definition
+  ; function body
+  RETURN <value> ; Return from function with value
+  ; or
+  RET           ; Return without value
+ENDFUNC         ; End function definition
+
+; Function call
+CALL <func> [arg1, arg2, ...]  ; Call function with arguments
+```
+
+### I/O Operations
+```assembly
+PRINT <value>   ; Print value to console
+INPUT <var>     ; Read input into variable
+```
+
+## Examples
+
+### Fibonacci Sequence
+```assembly
+; Calculate first 10 Fibonacci numbers
+VAR INT32 a 0
+VAR INT32 b 1
+VAR INT32 i 0
+VAR INT32 temp 0
+
+LABEL loop
+PRINT a
+MOV temp, a
+ADD a, b
+MOV b, temp
+ADD i, 1
+LT i, 10
+JNZ loop
+
+HALT
+```
+
+### Function Example
+```assembly
+; Define a function to calculate square
+FUNC square
+  MUL p0, p0  ; p0 is first parameter
+  RETURN p0
+ENDFUNC
+
+; Main program
+VAR INT32 num 5
+CALL square, num
+PRINT p0  ; Prints 25
+
+HALT
 ```
 
 ### Running Your First Program
@@ -75,7 +174,7 @@ PRINT R1  ; Should print 30
 
 Then run it with:
 ```bash
-./asp hello.asp
+asp hello.asp
 ```
 
 ## Usage
@@ -102,58 +201,46 @@ asp hello.asp
 
 ## Language Reference
 
-Assemplex provides a clean, minimal set of instructions that cover fundamental programming concepts while remaining powerful enough for various applications.
+Assemplex provides a clean, minimal set of instructions that cover fundamental programming concepts while remaining powerful enough for various applications. It uses a memory-based variable system with static typing.
 
-### Register Architecture
+### Memory Model
 
-Assemplex features a modern register architecture with different bit-widths and performance characteristics. Each register type has its own performance characteristics and operation costs.
-
-#### General Purpose Registers
-- `r1-r6`: 16-bit registers (1 cycle operations)
-  - 16-bit unsigned integers (0-65,535)
-  - Fastest operations, minimal memory usage
-- `r7-r10`: 32-bit registers (2 cycle operations)
-  - 32-bit unsigned integers (0-4,294,967,295)
-  - Good balance of speed and capacity
-- `r11-r13`: 64-bit registers (4 cycle operations)
-  - 64-bit unsigned integers (0-18,446,744,073,709,551,615)
-  - Larger capacity, moderate speed
-- `r14-r16`: 128-bit registers (8 cycle operations)
-  - 128-bit arbitrary-precision integers (using math/big)
-  - Maximum capacity, slower operations
+Assemplex uses a simple memory model where all variables must be explicitly declared with their types before use. Variables are scoped to their containing function and must be freed when no longer needed.
 
 ### Instruction Set
 
+#### Variable Management
+- `VAR <type> <name> [value]` - Declare a variable with optional initial value
+- `FREE <name>` - Free a variable's memory
+- `VAR <type> <name1> [value1], <name2> [value2], ...` - Multiple declarations
+
 #### Core Instructions
-- `MOV Rx, Ry` - Copy value between registers
-- `MOV Rx, value` - Load immediate value into register
-- `PRINT Rx` - Print value of register to console
-- `JMP label` - Unconditional jump to label
-- `JZ label` - Jump if zero flag is set
-- `JNZ label` - Jump if zero flag is not set
+- `PRINT <value>` - Print value to console
+- `JMP <label>` - Unconditional jump to label
+- `JZ <label>` - Jump if last comparison was true
+- `JNZ <label>` - Jump if last comparison was false
 - `HALT` - Stop program execution
 
 #### Arithmetic Operations
-- `ADD Rx, Ry` - Add registers (Rx = Rx + Ry)
-- `SUB Rx, Ry` - Subtract registers (Rx = Rx - Ry)
-- `MUL Rx, Ry` - Multiply registers (Rx = Rx * Ry)
-- `DIV Rx, Ry` - Divide registers (Rx = Rx / Ry)
-- `MOD Rx, Ry` - Modulo operation (Rx = Rx % Ry)
-- `NEG Rx` - Negate register value
-- `INC Rx` - Increment register by 1
-- `DEC Rx` - Decrement register by 1
+- `ADD <dest>, <src>` - Add values (dest = dest + src)
+- `SUB <dest>, <src>` - Subtract values (dest = dest - src)
+- `MUL <dest>, <src>` - Multiply values (dest = dest * src)
+- `DIV <dest>, <src>` - Divide values (dest = dest / src)
+- `MOD <dest>, <src>` - Modulo operation (dest = dest % src)
 
 #### Comparison Operations
-- `LT` - Less than (sets zero flag if true)
-- `LE` - Less than or equal (sets zero flag if true)
-- `GT` - Greater than (sets zero flag if true)
-- `GE` - Greater than or equal (sets zero flag if true)
-- `EQ` - Equal to (sets zero flag if true)
-- `NE` - Not equal to (sets zero flag if true)
+- `LT <a>, <b>` - Less than
+- `LE <a>, <b>` - Less than or equal
+- `GT <a>, <b>` - Greater than
+- `GE <a>, <b>` - Greater than or equal
+- `EQ <a>, <b>` - Equal to
+- `NE <a>, <b>` - Not equal to
 
 #### Function Handling
-- `FUNC name` - Define a function
-- `CALL func` - Call a function
+- `FUNC <name>` - Define a function
+- `CALL <func> [arg1, arg2, ...]` - Call a function with arguments
+- `RETURN <value>` - Return from function with value
+- `RET` - Return from function without value
 - `ENDFUNC` - End function definition
 
 ### Program Structure
@@ -163,19 +250,29 @@ A typical Assemplex program follows this structure:
 ```assembly
 ; This is a comment
 FUNC main
-  MOV r1, 10      ; Load immediate 10 into r1
-  MOV r2, 20      ; Load immediate 20 into r2
-  ADD r1, r2      ; r1 = r1 + r2
-  PRINT r1        ; Should print 30
-  HALT            ; End program
+  ; Declare variables
+  VAR INT32 num1 10
+  VAR INT32 num2 20
+  VAR INT32 result
+  
+  ; Perform operations
+  ADD result, num1
+  ADD result, num2  ; result = 10 + 20 = 30
+  
+  ; Output result
+  PRINT result      ; Prints 30
+  
+  ; Clean up
+  FREE num1, num2, result
+  HALT
 ENDFUNC
 ```
 
 ### Features
 
-- **Type-Safe Operations**: Operations respect register bit-widths
-- **Cycle Counting**: Tracks execution cycles for performance analysis
-- **Function Support**: Define and call functions
+- **Type-Safe Operations**: All operations are type-checked at runtime
+- **Memory Management**: Manual memory management with explicit allocation/deallocation
+- **Function Support**: Define and call functions with parameters
 - **Labels**: Support for named code locations with labels
 - **Comments**: Use `;` for single-line comments
 - **Error Handling**: Detailed error messages for invalid operations
@@ -186,19 +283,31 @@ Here's a simple program that adds two numbers and prints the result:
 ```assembly
 ; Simple addition program
 FUNC main
-  MOV r1, 10      ; Load first number
-  MOV r2, 20      ; Load second number
-  ADD r1, r2      ; Add them together
-  PRINT r1        ; Print result (30)
+  ; Declare and initialize variables
+  VAR INT32 num1 10
+  VAR INT32 num2 20
+  VAR INT32 result
+  
+  ; Perform addition
+  ADD result, num1
+  ADD result, num2
+  
+  ; Print and clean up
+  PRINT result    ; Prints 30
+  
+  ; Free variables when done
+  FREE num1, num2, result
+  
   HALT            ; End program
 ENDFUNC
 ```
 
 ### Notes
 - Use `;` for single-line comments
-- Programs must have a `main` function
-- All code must be inside functions
-- Register operations respect bit-widths automatically
+- Variables must be declared with `VAR` before use
+- Always free variables when no longer needed with `FREE`
+- Variable names are case-sensitive
+- Variables are scoped to their containing function
 
 ## Use Cases
 
@@ -215,19 +324,27 @@ Assemplex is designed for:
 ```assembly
 ; Function to add two numbers
 FUNC add_numbers
-    ; Arguments: r1, r2
-    ; Returns: r3 = r1 + r2
-    MOV r3, r1        ; Copy first argument to r3
-    ADD r3, r2        ; Add second argument
-    RET               ; Return with result in r3
+    ; Parameters: p0, p1 (automatically assigned)
+    ; Returns: p0 + p1
+    ADD p0, p1        ; Add parameters
+    RETURN p0         ; Return result
 ENDFUNC
 
 ; Main program
 FUNC main
-    MOV r1, 10        ; First argument
-    MOV r2, 20        ; Second argument
-    CALL add_numbers   ; Call function
-    PRINT r3          ; Print result (30)
+    ; Declare variables
+    VAR INT32 a 10
+    VAR INT32 b 20
+    VAR INT32 result
+    
+    ; Call function
+    CALL add_numbers, a, b
+    
+    ; Result is in p0
+    PRINT p0          ; Prints 30
+    
+    ; Clean up
+    FREE a, b, result
     HALT
 ENDFUNC
 ```
@@ -236,23 +353,29 @@ ENDFUNC
 ```assembly
 ; Find maximum of two numbers
 FUNC main
-    MOV r1, 42        ; First number
-    MOV r2, 27        ; Second number
+    ; Declare variables
+    VAR INT32 num1 42
+    VAR INT32 num2 27
+    VAR INT32 max
     
-    ; Compare values using subtraction
-    MOV r3, r1        ; Copy r1 to r3
-    SUB r3, r2        ; r3 = r1 - r2
-    JGT r1_greater    ; Jump if r1 > r2
+    ; Compare values
+    GT num1, num2
+    JZ second_greater
     
-    ; r2 is greater or equal
-    PRINT r2          ; Print r2
-    JMP end_compare
+    ; First number is greater
+    MOV max, num1
+    JMP print_result
     
-r1_greater:
-    ; r1 is greater
-    PRINT r1          ; Print r1
+second_greater:
+    ; Second number is greater or equal
+    MOV max, num2
     
-end_compare:
+print_result:
+    PRINT "Maximum is: "
+    PRINT max
+    
+    ; Clean up
+    FREE num1, num2, max
     HALT
 ENDFUNC
 ```
@@ -261,16 +384,21 @@ ENDFUNC
 ```assembly
 ; Count from 10 to 1
 FUNC main
-    MOV r1, 10        ; Initialize counter to 10
+    ; Initialize counter
+    VAR INT32 counter 10
     
 loop_start:
-    PRINT r1          ; Print current count
-    DEC r1            ; Decrement counter
-    JZ loop_end       ; If zero, exit loop
-    JMP loop_start    ; Otherwise, continue loop
+    ; Print current count
+    PRINT counter
     
-loop_end:
-    HALT              ; End program
+    ; Decrement and check if done
+    SUB counter, 1
+    GT counter, 0
+    JNZ loop_start
+    
+    ; Clean up
+    FREE counter
+    HALT
 ENDFUNC
 ```
 
@@ -278,14 +406,14 @@ ENDFUNC
 ```assembly
 ; Countdown from 10 with delay
 FUNC main
-    MOV r1, 10        ; Initialize counter
-    MOV r2, 1000000   ; Delay counter
+    ; Initialize variables
+    VAR INT32 count 10
+    VAR INT32 delay 1000000
+    VAR INT32 temp
     
 count_loop:
-    PRINT r1          ; Print current number
-    
-    ; Delay loop
-    MOV r3, r2
+    ; Print current number
+    PRINT count
     
 delay_loop:
     DEC r3
