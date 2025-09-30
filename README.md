@@ -1,10 +1,10 @@
 # Assemplex(Not currently Maintaned)
 
-Assemplex is a high-performance, low-level programming language and virtual machine designed for performance-critical applications. Written in Go, it provides a clean assembly-like syntax while delivering execution speeds approximately 2-4x faster than Python for many tasks. Assemplex is perfect for projects that need low-level control without sacrificing development speed.
+Assemplex is a high-performance, low-level programming language and virtual machine designed for performance-critical applications. Written in Go, it provides a clean assembly-like syntax while delivering execution speeds approximately 2x faster than Python for many tasks. Assemplex is perfect for projects that need low-level control without sacrificing development speed.
 
 ## Key Features
 
-- **High Performance**: Optimized execution with near-native speeds
+- **mid Performance**: Optimized execution with no where native speeds
 - **Low-Level Control**: Direct memory management and type system
 - **Type System**: Support for various numeric types (INT16/32/64, FLOAT16/32/64) and CHAR
 - **Efficient Execution**: Optimized bytecode interpreter for fast performance
